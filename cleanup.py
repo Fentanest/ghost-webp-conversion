@@ -97,6 +97,11 @@ def backup_and_delete_unused_images(unused_files, backup_path, log_path, databas
             f.write(f"{filepath}\n")
     print(f"List of unused files saved to: {log_filepath}")
 
+    print("\n--- Unused Files Found ---")
+    for filepath in unused_files:
+        print(f"- {filepath}")
+    print("--------------------------")
+
     # Confirm with the user before deleting
     print("\n--- WARNING ---")
     print(f"You are about to delete {len(unused_files)} files.")
