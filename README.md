@@ -1,22 +1,4 @@
 # Instruction
----
-### Configuration
-
-Define the following values in your `config.py` file:
-
-| Key | Description |
-|---|---|
-| user | MySQL username (typically `root`) |
-| host | MySQL host address |
-| database | Name of your GhostCMS database |
-| password | Password for the MySQL user |
-| ghost_path | Absolute path to the Ghost `content` directory |
-| images_path | Absolute path to the Ghost `images` directory |
-| backup_path | Directory where backup files will be stored |
-| log_path | Directory where log files will be saved |
-| webp_quality | Desired quality level for WebP image conversion (range: 0–100) |
-
----
 
 ### Usage Instructions
 
@@ -45,27 +27,53 @@ git clone https://github.com/Fentanest/ghost-webp-conversion.git
 cd ghost-webp-conversion
 ```
 
-3. Set up a Python virtual environment
+3. Define the following values in your `config.py` file:
+```
+nano config.py
+```
+
+| Key | Description |
+|---|---|
+| user | MySQL username (typically `root`) |
+| host | MySQL host address |
+| database | Name of your GhostCMS database |
+| password | Password for the MySQL user |
+| ghost_path | Absolute path to the Ghost `content` directory |
+| images_path | Absolute path to the Ghost `images` directory |
+| backup_path | Directory where backup files will be stored |
+| log_path | Directory where log files will be saved |
+| webp_quality | Desired quality level for WebP image conversion (range: 0–100) |
+
+4. Set up a Python virtual environment
 ```
 python3 -m venv venv
 source venv/bin/activate
 ```
 
-4. Install required dependencies
+5. Install required dependencies
 ```
 pip install -r requirements.txt
 ```
 
-5. Execute WebP conversion process
+6. Execute WebP conversion process
 ```
 python main.py
 ```
 
-6. Perform cleanup of unused images
+7. Perform cleanup of unused images
 ```
 python cleanup.py
 ```
 
-Review the list of images to be deleted and type 'yes' exactly to confirm deletion of image files.
+---
 
-If an error occurs during step 6, restore from the generated backup archive located in the backup folder path, named unused_images_backup_{database}...tar.gz.
+### Recovery Guide
+
+If any error occurs during execution, restore your GhostCMS using the automatically generated backup files located in the `backup` directory.
+
+### Step 7
+
+Review the **Image Cleanup List** carefully before proceeding.  
+Type **yes** to confirm the operation.  
+If something goes wrong during this step, use the `unused_images_backup_{database}...tar.gz` file from the `backup` directory to restore the images.
+
