@@ -15,36 +15,39 @@ def get_used_images_from_db(db_config):
     """Scans the database to find all image paths currently in use."""
     print("Scanning database for used images...")
     used_images = set()
-    # Regex to find all variants of /content/images/ paths
-    # This regex is primarily for HTML content, where paths are relative to the Ghost URL
     image_path_regex = re.compile(r'/content/images/[A-Za-z0-9\.\-\_/]+')
-    
-    # Define the prefix to remove from feature_image if present
     ghost_url_prefix = '__GHOST_URL__'
 
     try:
         with mysql.connector.connect(**db_config) as conn:
             with conn.cursor(dictionary=True) as cursor:
+                # Scan posts table
                 cursor.execute("SELECT html, feature_image FROM posts")
                 posts = cursor.fetchall()
-
                 for post in posts:
-                    # Scan html content
                     if post['html']:
-                        found_in_html = image_path_regex.findall(post['html'])
-                        used_images.update(found_in_html)
-                    
-                    # Scan feature_image
+                        used_images.update(image_path_regex.findall(post['html']))
                     if post['feature_image']:
                         feature_img_path = post['feature_image']
-                        # Remove __GHOST_URL__ prefix if present
                         if feature_img_path.startswith(ghost_url_prefix):
                             feature_img_path = feature_img_path[len(ghost_url_prefix):]
-                        
-                        # Ensure it starts with /content/images/ before adding
-                        # This handles cases where feature_image might be something else entirely
                         if feature_img_path.startswith('/content/images/'):
                             used_images.add(feature_img_path)
+
+                # Scan settings table
+                setting_keys = ('logo', 'cover_image', 'icon')
+                query_template = "SELECT `value` FROM settings WHERE `key` IN ({})"
+                in_clause = ', '.join(['%s'] * len(setting_keys))
+                query = query_template.format(in_clause)
+                cursor.execute(query, setting_keys)
+                settings = cursor.fetchall()
+                for setting in settings:
+                    if setting['value']:
+                        setting_path = setting['value']
+                        if setting_path.startswith(ghost_url_prefix):
+                            setting_path = setting_path[len(ghost_url_prefix):]
+                        if setting_path.startswith('/content/images/'):
+                            used_images.add(setting_path)
 
         print(f"Found {len(used_images)} unique image paths in the database.")
         return used_images

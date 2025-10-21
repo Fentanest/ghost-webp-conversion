@@ -72,9 +72,9 @@ def main(dry_run=False, nobackup=False):
     # Removed the 'else' block for skipping plaintext backup
 
     # Step 5: Update image links in database
-    print("\n--- Step 5: Updating image links in database (html, feature_image) ---")
-    updated_count = update_image_links(config.db_config, conversion_map, dry_run=dry_run, log_path=config.log_path, database_name=database_name) # Pass log_path and database_name
-    if updated_count == -1:
+    print("\n--- Step 5: Updating image links in database (posts and settings) ---")
+    updated_posts, updated_settings = update_image_links(config.db_config, conversion_map, dry_run=dry_run, log_path=config.log_path, database_name=database_name)
+    if updated_posts == -1 or updated_settings == -1:
         print("Failed to update database links. Check logs for errors. Aborting.")
         return
 

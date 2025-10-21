@@ -145,26 +145,29 @@ def _process_image_url(url, conversion_map):
 
 def update_image_links(db_config, conversion_map, dry_run=False, log_path=None, database_name=None):
     """
-    Updates image links in the posts table (html and feature_image) using the conversion_map.
+    Updates image links in the posts table (html, feature_image) and settings table 
+    (logo, cover_image, icon) using the conversion_map.
     Handles src and srcset attributes in HTML.
     """
     updated_posts_count = 0
+    updated_settings_count = 0
     
     html_log_file = None
     try:
         if dry_run:
             if not log_path or not database_name:
                 print("Error: log_path or database_name not provided for HTML dry run logging.")
-                return -1
+                return -1, -1
             if not os.path.exists(log_path):
                 os.makedirs(log_path)
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             html_dry_run_log_filepath = os.path.join(log_path, f"html_update_dry_run_{database_name}_{timestamp}.log")
             print(f"DRY RUN: Detailed HTML changes will be logged to: {html_dry_run_log_filepath}")
-            html_log_file = open(html_dry_run_log_filepath, 'w', encoding='utf-8') # Use 'w' to create a new file each time
+            html_log_file = open(html_dry_run_log_filepath, 'w', encoding='utf-8')
 
         with mysql.connector.connect(**db_config) as conn:
             with conn.cursor(dictionary=True) as cursor:
+                # --- Posts Table Update ---
                 cursor.execute("SELECT id, html, feature_image FROM posts")
                 posts = cursor.fetchall()
 
@@ -177,11 +180,9 @@ def update_image_links(db_config, conversion_map, dry_run=False, log_path=None, 
                     html_changed = False
                     feature_image_changed = False
 
-                    # --- HTML Column Update ---
                     if original_html:
                         soup = BeautifulSoup(original_html, 'html.parser')
                         for img_tag in soup.find_all('img'):
-                            # Process 'src' attribute
                             if 'src' in img_tag.attrs:
                                 old_src = img_tag['src']
                                 new_src = _process_image_url(old_src, conversion_map)
@@ -189,17 +190,14 @@ def update_image_links(db_config, conversion_map, dry_run=False, log_path=None, 
                                     img_tag['src'] = new_src
                                     html_changed = True
                             
-                            # Process 'srcset' attribute
                             if 'srcset' in img_tag.attrs:
                                 old_srcset = img_tag['srcset']
                                 srcset_parts = old_srcset.split(',')
                                 new_srcset_parts = []
                                 for part in srcset_parts:
                                     part = part.strip()
-                                    if not part:
-                                        continue
+                                    if not part: continue
                                     
-                                    # Split URL and descriptor (e.g., "image.png 600w")
                                     url_descriptor = part.rsplit(' ', 1)
                                     url = url_descriptor[0]
                                     descriptor = url_descriptor[1] if len(url_descriptor) > 1 else ''
@@ -208,10 +206,7 @@ def update_image_links(db_config, conversion_map, dry_run=False, log_path=None, 
                                     if new_url != url:
                                         html_changed = True
                                     
-                                    if descriptor:
-                                        new_srcset_parts.append(f"{new_url} {descriptor}")
-                                    else:
-                                        new_srcset_parts.append(new_url)
+                                    new_srcset_parts.append(f"{new_url} {descriptor}" if descriptor else new_url)
                                 
                                 new_srcset = ", ".join(new_srcset_parts)
                                 if new_srcset != old_srcset:
@@ -221,7 +216,6 @@ def update_image_links(db_config, conversion_map, dry_run=False, log_path=None, 
                         if html_changed:
                             new_html = str(soup)
 
-                    # --- Feature Image Column Update ---
                     if original_feature_image:
                         new_feature_image = _process_image_url(original_feature_image, conversion_map)
                         if new_feature_image != original_feature_image:
@@ -231,27 +225,58 @@ def update_image_links(db_config, conversion_map, dry_run=False, log_path=None, 
                         updated_posts_count += 1
                         if dry_run:
                             html_log_file.write(f"--- DRY RUN: Post ID {post['id']} ---\n")
-                            html_log_file.write(f"Original HTML:\n{original_html}\n")
-                            html_log_file.write(f"New HTML:\n{new_html}\n")
-                            html_log_file.write(f"Original Feature Image: {original_feature_image}\n")
-                            html_log_file.write(f"New Feature Image: {new_feature_image}\n")
+                            if html_changed:
+                                html_log_file.write(f"Original HTML:\n{original_html}\nNew HTML:\n{new_html}\n")
+                            if feature_image_changed:
+                                html_log_file.write(f"Original Feature Image: {original_feature_image}\nNew Feature Image: {new_feature_image}\n")
                             html_log_file.write("---------------------------------------------------\n")
-                            print(f"DRY RUN: Post ID {post['id']} would be updated. Details logged to {html_dry_run_log_filepath}") # Console message
+                            print(f"DRY RUN: Post ID {post['id']} would be updated.")
                         else:
                             update_query = "UPDATE posts SET html = %s, feature_image = %s WHERE id = %s"
                             cursor.execute(update_query, (new_html, new_feature_image, post['id']))
-                
+
+                # --- Settings Table Update ---
+                setting_keys = ('logo', 'cover_image', 'icon')
+                # Using a format string for the IN clause
+                query_template = "SELECT id, `key`, `value` FROM settings WHERE `key` IN ({})"
+                in_clause = ', '.join(['%s'] * len(setting_keys))
+                query = query_template.format(in_clause)
+
+                cursor.execute(query, setting_keys)
+                settings = cursor.fetchall()
+
+                for setting in settings:
+                    original_value = setting['value']
+                    if not original_value:
+                        continue
+
+                    new_value = _process_image_url(original_value, conversion_map)
+
+                    if new_value != original_value:
+                        updated_settings_count += 1
+                        if dry_run:
+                            html_log_file.write(f"--- DRY RUN: Setting Key '{setting['key']}' ---\n")
+                            html_log_file.write(f"Original Value: {original_value}\n")
+                            html_log_file.write(f"New Value: {new_value}\n")
+                            html_log_file.write("---------------------------------------------------\n")
+                            print(f"DRY RUN: Setting '{setting['key']}' would be updated.")
+                        else:
+                            update_query = "UPDATE settings SET `value` = %s WHERE id = %s"
+                            cursor.execute(update_query, (new_value, setting['id']))
+
                 if not dry_run:
                     conn.commit()
-                print(f"Successfully updated image links in {updated_posts_count} posts.")
-                return updated_posts_count
+                
+                print(f"Successfully processed {updated_posts_count} posts.")
+                print(f"Successfully processed {updated_settings_count} settings.")
+                return updated_posts_count, updated_settings_count
 
     except mysql.connector.Error as e:
         print(f"Database error during link update: {e}")
-        return -1
+        return -1, -1
     except Exception as e:
         print(f"An unexpected error occurred during link update: {e}")
-        return -1
+        return -1, -1
     finally:
         if html_log_file:
             html_log_file.close()
