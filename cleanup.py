@@ -98,7 +98,24 @@ def find_unused_images(images_path, db_config, dry_run=False):
     for db_style_path, absolute_path in physical_files.items():
         # Apply the same normalization to the physical file's path
         base_physical_path = format_regex.sub('', size_regex.sub('', db_style_path))
-        is_used = base_physical_path in base_used_paths
+        is_used = False
+
+        # Check 1: Is the exact base path used?
+        if base_physical_path in base_used_paths:
+            is_used = True
+        else:
+            # Check 2: Is it an _o file whose non-_o version is used?
+            # Extract filename and extension
+            path_dir, path_filename = os.path.split(base_physical_path)
+            filename_no_ext, ext = os.path.splitext(path_filename)
+
+            if filename_no_ext.lower().endswith('_o'):
+                # Construct the path without _o
+                filename_without_o = filename_no_ext[:-2] # Remove '_o'
+                o_stripped_base_path = os.path.join(path_dir, filename_without_o + ext)
+                
+                if o_stripped_base_path in base_used_paths:
+                    is_used = True
         
         if not is_used:
             unused_file_paths.append(absolute_path)

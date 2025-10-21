@@ -1,2 +1,3 @@
 Pillow
 mysql-connector-python
+beautifulsoup4

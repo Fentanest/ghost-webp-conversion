@@ -1,14 +1,24 @@
 # db_handler.py
+import re
 import os
 import datetime
 import subprocess
 import mysql.connector
 import json
+from bs4 import BeautifulSoup
 
-def backup_database(db_config, backup_path):
+def backup_database(db_config, backup_path, nobackup=False, dry_run=False):
     """
     Dumps the MySQL database to a .sql file.
     """
+    if nobackup:
+        print("Skipping database backup as per --nobackup option.")
+        return None
+
+    if dry_run:
+        print(f"DRY RUN: Would backup database '{db_config['database']}' to {os.path.join(backup_path, f"db_backup_{db_config['database']}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.sql")}")
+        return None
+
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_filename = f"db_backup_{db_config['database']}_{timestamp}.sql"
     backup_filepath = os.path.join(backup_path, backup_filename)
@@ -44,14 +54,10 @@ def backup_database(db_config, backup_path):
         print("Error: 'mysqldump' command not found. Please make sure MySQL client tools are installed and in your PATH.")
         return None
 
-def backup_plaintext(db_config, backup_path):
+def backup_plaintext(db_config, backup_path, dry_run=False):
     """
     Backs up the id, slug, and plaintext of posts containing images.
     """
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_filename = f"plaintext_backup_{db_config['database']}_{timestamp}.json"
-    backup_filepath = os.path.join(backup_path, backup_filename)
-    
     posts_to_backup = []
     try:
         with mysql.connector.connect(**db_config) as conn:
@@ -64,30 +70,99 @@ def backup_plaintext(db_config, backup_path):
                 """
                 cursor.execute(query)
                 posts_to_backup = cursor.fetchall()
-
-        if not posts_to_backup:
-            print("No posts with image links found in plaintext. Skipping plaintext backup.")
-            return None
-
-        with open(backup_filepath, 'w', encoding='utf-8') as f:
-            json.dump(posts_to_backup, f, indent=4, ensure_ascii=False)
-        
-        print(f"Successfully backed up plaintext for {len(posts_to_backup)} posts to {backup_filepath}")
-        return backup_filepath
-
     except mysql.connector.Error as e:
-        print(f"Database error during plaintext backup: {e}")
+        print(f"Database error during plaintext backup query: {e}")
         return None
     except Exception as e:
-        print(f"An unexpected error occurred during plaintext backup: {e}")
+        print(f"An unexpected error occurred during plaintext backup query: {e}")
         return None
 
-def update_image_links(db_config, conversion_map):
+    if not posts_to_backup:
+        print("No posts with image links found in plaintext. Skipping plaintext backup.")
+        return None
+
+    if dry_run:
+        print(f"DRY RUN: Would backup plaintext for {len(posts_to_backup)} posts to {os.path.join(backup_path, f"plaintext_backup_{db_config['database']}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json")}")
+        return None # Return None as no file is actually created
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"plaintext_backup_{db_config['database']}_{timestamp}.json"
+    backup_filepath = os.path.join(backup_path, backup_filename)
+    
+    with open(backup_filepath, 'w', encoding='utf-8') as f:
+        json.dump(posts_to_backup, f, indent=4, ensure_ascii=False)
+    
+    print(f"Successfully backed up plaintext for {len(posts_to_backup)} posts to {backup_filepath}")
+    return backup_filepath
+
+
+def _process_image_url(url, conversion_map):
     """
-    Updates image links in the posts table (html and feature_image).
+    Helper function to process a single image URL, looking it up in the conversion_map
+    and reconstructing it with original prefixes.
+    """
+    if not url:
+        return url
+
+    original_url = url
+    ghost_url_prefix = ''
+    size_prefix = ''
+
+    # Check for __GHOST_URL__ prefix
+    if original_url.startswith('__GHOST_URL__'):
+        ghost_url_prefix = '__GHOST_URL__'
+        url = original_url.replace('__GHOST_URL__', '', 1)
+
+    # Check for /size/wXXX/ prefix
+    # This regex needs to be more robust to handle cases like /content/images/size/w600/2025/10/image.png
+    # and extract just the /size/wXXX/ part
+    size_match = re.match(r'(/content/images/size/w\d+/)', url)
+    if size_match:
+        size_prefix = size_match.group(1)
+        # For map lookup, we need the path without the size prefix,
+        # so replace /content/images/size/wXXX/ with /content/images/
+        url_for_map_lookup = url.replace(size_prefix, '/content/images/', 1)
+    else:
+        url_for_map_lookup = url
+
+    # The key for conversion_map should be like /content/images/YYYY/MM/image.png
+    map_key = url_for_map_lookup
+
+    if map_key in conversion_map:
+        new_map_value = conversion_map[map_key]
+        # Reconstruct the URL with original prefixes
+        # The new_map_value already has /content/images/
+        # We need to re-insert the size_prefix if it was there
+        if size_prefix:
+            # Replace /content/images/ with size_prefix in the new_map_value
+            new_url_path = new_map_value.replace('/content/images/', size_prefix, 1)
+        else:
+            new_url_path = new_map_value
+        
+        return f"{ghost_url_prefix}{new_url_path}"
+    return original_url # Return original if not found in map
+
+
+def update_image_links(db_config, conversion_map, dry_run=False, log_path=None, database_name=None):
+    """
+    Updates image links in the posts table (html and feature_image) using the conversion_map.
+    Handles src and srcset attributes in HTML.
     """
     updated_posts_count = 0
+    
+    html_log_file = None
     try:
+        if dry_run:
+            if not log_path or not database_name:
+                print("Error: log_path or database_name not provided for HTML dry run logging.")
+                return -1
+            if not os.path.exists(log_path):
+                os.makedirs(log_path)
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            html_dry_run_log_filepath = os.path.join(log_path, f"html_update_dry_run_{database_name}_{timestamp}.log")
+            print(f"DRY RUN: Detailed HTML changes will be logged to: {html_dry_run_log_filepath}")
+            html_log_file = open(html_dry_run_log_filepath, 'w', encoding='utf-8') # Use 'w' to create a new file each time
+
         with mysql.connector.connect(**db_config) as conn:
             with conn.cursor(dictionary=True) as cursor:
                 cursor.execute("SELECT id, html, feature_image FROM posts")
@@ -98,33 +173,90 @@ def update_image_links(db_config, conversion_map):
                     original_feature_image = post['feature_image']
                     new_html = original_html
                     new_feature_image = original_feature_image
+                    
+                    html_changed = False
+                    feature_image_changed = False
 
-                    for original_path, webp_path in conversion_map.items():
-                        # Note: Ghost paths might be relative or absolute. 
-                        # This simple replacement should work for default Ghost setups.
-                        if original_html:
-                            new_html = new_html.replace(original_path, webp_path)
-                        if new_feature_image:
-                            new_feature_image = new_feature_image.replace(original_path, webp_path)
+                    # --- HTML Column Update ---
+                    if original_html:
+                        soup = BeautifulSoup(original_html, 'html.parser')
+                        for img_tag in soup.find_all('img'):
+                            # Process 'src' attribute
+                            if 'src' in img_tag.attrs:
+                                old_src = img_tag['src']
+                                new_src = _process_image_url(old_src, conversion_map)
+                                if new_src != old_src:
+                                    img_tag['src'] = new_src
+                                    html_changed = True
+                            
+                            # Process 'srcset' attribute
+                            if 'srcset' in img_tag.attrs:
+                                old_srcset = img_tag['srcset']
+                                srcset_parts = old_srcset.split(',')
+                                new_srcset_parts = []
+                                for part in srcset_parts:
+                                    part = part.strip()
+                                    if not part:
+                                        continue
+                                    
+                                    # Split URL and descriptor (e.g., "image.png 600w")
+                                    url_descriptor = part.rsplit(' ', 1)
+                                    url = url_descriptor[0]
+                                    descriptor = url_descriptor[1] if len(url_descriptor) > 1 else ''
 
-                    if new_html != original_html or new_feature_image != original_feature_image:
-                        update_query = "UPDATE posts SET html = %s, feature_image = %s WHERE id = %s"
-                        cursor.execute(update_query, (new_html, new_feature_image, post['id']))
+                                    new_url = _process_image_url(url, conversion_map)
+                                    if new_url != url:
+                                        html_changed = True
+                                    
+                                    if descriptor:
+                                        new_srcset_parts.append(f"{new_url} {descriptor}")
+                                    else:
+                                        new_srcset_parts.append(new_url)
+                                
+                                new_srcset = ", ".join(new_srcset_parts)
+                                if new_srcset != old_srcset:
+                                    img_tag['srcset'] = new_srcset
+                                    html_changed = True
+                        
+                        if html_changed:
+                            new_html = str(soup)
+
+                    # --- Feature Image Column Update ---
+                    if original_feature_image:
+                        new_feature_image = _process_image_url(original_feature_image, conversion_map)
+                        if new_feature_image != original_feature_image:
+                            feature_image_changed = True
+
+                    if html_changed or feature_image_changed:
                         updated_posts_count += 1
+                        if dry_run:
+                            html_log_file.write(f"--- DRY RUN: Post ID {post['id']} ---\n")
+                            html_log_file.write(f"Original HTML:\n{original_html}\n")
+                            html_log_file.write(f"New HTML:\n{new_html}\n")
+                            html_log_file.write(f"Original Feature Image: {original_feature_image}\n")
+                            html_log_file.write(f"New Feature Image: {new_feature_image}\n")
+                            html_log_file.write("---------------------------------------------------\n")
+                            print(f"DRY RUN: Post ID {post['id']} would be updated. Details logged to {html_dry_run_log_filepath}") # Console message
+                        else:
+                            update_query = "UPDATE posts SET html = %s, feature_image = %s WHERE id = %s"
+                            cursor.execute(update_query, (new_html, new_feature_image, post['id']))
                 
-                conn.commit()
+                if not dry_run:
+                    conn.commit()
                 print(f"Successfully updated image links in {updated_posts_count} posts.")
                 return updated_posts_count
 
     except mysql.connector.Error as e:
         print(f"Database error during link update: {e}")
-        # conn.rollback() # Rollback is handled by 'with' context manager on error
         return -1
     except Exception as e:
         print(f"An unexpected error occurred during link update: {e}")
         return -1
+    finally:
+        if html_log_file:
+            html_log_file.close()
 
-def restore_plaintext(db_config, plaintext_backup_path):
+def restore_plaintext(db_config, plaintext_backup_path, dry_run=False):
     """
     Restores the original plaintext to the posts table.
     """
@@ -138,6 +270,10 @@ def restore_plaintext(db_config, plaintext_backup_path):
     if not backed_up_posts:
         print("No posts in the backup file. Skipping restoration.")
         return 0
+
+    if dry_run:
+        print(f"DRY RUN: Would restore plaintext for {len(backed_up_posts)} posts.")
+        return 0 # Return 0 as no actual restores
 
     restored_count = 0
     try:

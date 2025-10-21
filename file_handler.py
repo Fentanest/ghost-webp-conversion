@@ -4,6 +4,7 @@ import datetime
 import tarfile
 import subprocess
 import multiprocessing
+from PIL import Image # Moved import here
 
 def _check_pigz_installed():
     """
@@ -15,10 +16,18 @@ def _check_pigz_installed():
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
 
-def backup_ghost_files(ghost_path, backup_path, database_name):
+def backup_ghost_files(ghost_path, backup_path, database_name, nobackup=False, dry_run=False):
     """
     Compresses the Ghost content directory into a tar.gz file, using pigz if available.
     """
+    if nobackup:
+        print("Skipping Ghost file backup as per --nobackup option.")
+        return None
+
+    if dry_run:
+        print(f"DRY RUN: Would backup Ghost files from {ghost_path} to {os.path.join(backup_path, f'ghost_backup_{database_name}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.tar.gz')}")
+        return None
+
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_filename = f"ghost_backup_{database_name}_{timestamp}.tar.gz"
     backup_filepath = os.path.join(backup_path, backup_filename)
@@ -119,30 +128,45 @@ def find_images(images_path, log_path, database_name):
     
     return all_images, duplicates
 
-from PIL import Image
-import multiprocessing
-
 def _convert_worker(args):
-    """Worker function to convert a single image. To be used by a multiprocessing Pool."""
-    image_path, duplicates, quality, images_path = args
+    """
+    Worker function to convert a single image. To be used by a multiprocessing Pool.
+    """
+    image_path, duplicates, quality, images_path, dry_run = args
     try:
         original_basename, original_ext = os.path.splitext(os.path.basename(image_path))
         output_dir = os.path.dirname(image_path)
         
         is_duplicate = any(image_path in path_list for path_list in duplicates.values())
-        if is_duplicate:
-            new_basename = f"{original_basename}{original_ext.replace('.', '_')}"
-        else:
-            new_basename = original_basename
+        final_basename = original_basename # Start with original basename
 
-        output_filename = f"{new_basename}.webp"
+        # Check for _o suffix
+        has_o_suffix = False
+        if final_basename.lower().endswith('_o'):
+            has_o_suffix = True
+            # Temporarily remove _o to apply duplicate handling
+            final_basename = final_basename[:-2] # Remove '_o'
+
+        if is_duplicate:
+            # Apply duplicate handling
+            # The current logic appends original_ext.replace('.', '_')
+            final_basename = f"{final_basename}{original_ext.replace('.', '_')}"
+        
+        # Re-add _o suffix if it was present
+        if has_o_suffix:
+            final_basename = f"{final_basename}_o"
+
+        output_filename = f"{final_basename}.webp"
         output_path = os.path.join(output_dir, output_filename)
 
-        with Image.open(image_path) as img:
-            # Ensure image is in a mode that supports saving as webp (e.g., RGB)
-            if img.mode not in ('RGB', 'RGBA'):
-                img = img.convert('RGB')
-            img.save(output_path, 'webp', quality=quality)
+        if not dry_run: # Only save if not dry_run
+            with Image.open(image_path) as img:
+                # Ensure image is in a mode that supports saving as webp (e.g., RGB)
+                if img.mode not in ('RGB', 'RGBA'):
+                    img = img.convert('RGB')
+                img.save(output_path, 'webp', quality=quality)
+        else:
+            print(f"DRY RUN: Would convert {image_path} to {output_path}") # Log dry run conversion
 
         relative_original = os.path.relpath(image_path, images_path)
         relative_new = os.path.relpath(output_path, images_path)
@@ -154,7 +178,7 @@ def _convert_worker(args):
     except Exception as e:
         return ('error', image_path, str(e))
 
-def convert_images_to_webp(image_paths, duplicates, quality, log_path, images_path, database_name):
+def convert_images_to_webp(image_paths, duplicates, quality, log_path, images_path, database_name, dry_run=False):
     """
     Converts images to WebP format in parallel and logs the conversions.
     """
@@ -162,10 +186,13 @@ def convert_images_to_webp(image_paths, duplicates, quality, log_path, images_pa
     conversion_log_path = os.path.join(log_path, f"conversion_log_{database_name}_{timestamp}.log")
     conversion_map = {}
 
-    tasks = [(path, duplicates, quality, images_path) for path in image_paths]
+    # Pass dry_run to the worker function
+    tasks = [(path, duplicates, quality, images_path, dry_run) for path in image_paths]
 
+    if dry_run:
+        print("DRY RUN: Image conversion process will be simulated.")
     print(f"Starting parallel image conversion for {len(image_paths)} images...")
-    # Use context manager for the pool
+    
     with multiprocessing.Pool() as pool:
         results = pool.map(_convert_worker, tasks)
 
@@ -183,4 +210,3 @@ def convert_images_to_webp(image_paths, duplicates, quality, log_path, images_pa
 
     print(f"Image conversion finished. Log saved to: {conversion_log_path}")
     return conversion_map
-
