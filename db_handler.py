@@ -10,7 +10,7 @@ def backup_database(db_config, backup_path):
     Dumps the MySQL database to a .sql file.
     """
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_filename = f"db_backup_{timestamp}.sql"
+    backup_filename = f"db_backup_{db_config['database']}_{timestamp}.sql"
     backup_filepath = os.path.join(backup_path, backup_filename)
 
     if not os.path.exists(backup_path):
@@ -49,7 +49,7 @@ def backup_plaintext(db_config, backup_path):
     Backs up the id, slug, and plaintext of posts containing images.
     """
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_filename = f"plaintext_backup_{timestamp}.json"
+    backup_filename = f"plaintext_backup_{db_config['database']}_{timestamp}.json"
     backup_filepath = os.path.join(backup_path, backup_filename)
     
     posts_to_backup = []

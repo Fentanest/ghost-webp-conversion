@@ -7,10 +7,12 @@ def main():
     """Main function to run the conversion process."""
     print("Starting the Ghost WebP conversion process...")
 
+    database_name = config.db_config['database']
+
     # Step 1: Backup
     print("\n--- Step 1: Backing up database and files ---")
     db_backup_file = backup_database(config.db_config, config.backup_path)
-    ghost_backup_file = backup_ghost_files(config.ghost_path, config.backup_path)
+    ghost_backup_file = backup_ghost_files(config.ghost_path, config.backup_path, database_name)
 
     if not db_backup_file or not ghost_backup_file:
         print("\nBackup failed. Aborting the process.")
@@ -21,7 +23,7 @@ def main():
 
     # Step 2: Find and log images
     print("\n--- Step 2: Finding and logging images ---")
-    all_images, duplicates = find_images(config.images_path, config.log_path)
+    all_images, duplicates = find_images(config.images_path, config.log_path, database_name)
 
     if not all_images:
         print("No images found to process. Aborting.")
@@ -29,7 +31,7 @@ def main():
 
     # Step 3: Convert images to WebP
     print("\n--- Step 3: Converting images to WebP ---")
-    conversion_map = convert_images_to_webp(all_images, duplicates, config.webp_quality, config.log_path, config.images_path)
+    conversion_map = convert_images_to_webp(all_images, duplicates, config.webp_quality, config.log_path, config.images_path, database_name)
 
     if not conversion_map:
         print("Image conversion failed or produced no results. Aborting.")
