@@ -57,10 +57,9 @@ python main.py
 ```
 
 If you want to see what happens, add `--dry`
-
 This process automatically creates a backup of the DB file and Content folder in the backup path.
-
 If you want to take a risky one-way trip without backup, use `--nobackup`.
+
 
 6. Perform cleanup of unused images
 ```
@@ -68,8 +67,8 @@ python cleanup.py
 ```
 
 This process collects the images to be deleted and creates a compressed file in the backup path.
-
 As with Step 5, you can use `--dry` and `--nobackup`.
+
 
 ### Recovery Guide
 
