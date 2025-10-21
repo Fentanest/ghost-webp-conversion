@@ -79,6 +79,14 @@ This process collects the images to be deleted and creates a compressed file in 
 
 As with Step 5, you can use `--dry` and `--nobackup`.
 
+<br>
+
+7. Restart Ghost CMS
+
+To apply the changes completely — including the logo, cover image, and icon — you need to restart your Ghost CMS instance.
+
+<br>
+
 ---
 
 ### Recovery Guide
