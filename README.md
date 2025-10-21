@@ -20,14 +20,17 @@
      ```
      sudo pacman -S mariadb pigz
      ```
+<br>
 
 2. Clone Repo
 ```
 git clone https://github.com/Fentanest/ghost-webp-conversion.git
 cd ghost-webp-conversion
 ```
+<br>
 
 3. Define the following values in your `config.py` file:
+
 ```
 nano config.py
 ```
@@ -44,12 +47,15 @@ nano config.py
 | log_path | Directory where log files will be saved |
 | webp_quality | Desired quality level for WebP image conversion (range: 0–100) |
 
+<br>
+
 4. Set up a Python virtual environment
 ```
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
+<br>
 
 5. Execute WebP conversion process
 ```
@@ -57,9 +63,12 @@ python main.py
 ```
 
 If you want to see what happens, add `--dry`
+
 This process automatically creates a backup of the DB file and Content folder in the backup path.
+
 If you want to take a risky one-way trip without backup, use `--nobackup`.
 
+<br>
 
 6. Perform cleanup of unused images
 ```
@@ -67,8 +76,10 @@ python cleanup.py
 ```
 
 This process collects the images to be deleted and creates a compressed file in the backup path.
+
 As with Step 5, you can use `--dry` and `--nobackup`.
 
+---
 
 ### Recovery Guide
 
