@@ -79,9 +79,9 @@ pip install -r requirements.txt
 python main.py
 ```
 
-If you want to see what happens, add `--dry`
-
 This process automatically creates a backup of the DB file and Content folder in the backup path.
+
+Add `--dry` if you want to simulate the action without actually executing it.
 
 If you want to take a risky one-way trip without backup, use `--nobackup`.
 
