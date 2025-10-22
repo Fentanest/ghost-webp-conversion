@@ -1,8 +1,15 @@
-# Instruction
+# Overview
+
+This project provides Python utilities for managing images in Ghost CMS.
+
+- **main.py** — Converts all uploaded image files to WebP format and automatically updates the database references.
+- **cleanup.py** — Scans the database to identify and remove unused image files, keeping your Ghost instance clean and efficient.
 
 Check out [worklazy.net](https://worklazy.net) or [hb.worklazy.net](https://hb.worklazy.net) to see a blog that converted all images to WebP using this project.
 
 <br>
+
+# Instruction
 
 ## Caution
 
