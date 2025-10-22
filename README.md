@@ -53,6 +53,7 @@ nano config.py
 |---|---|
 | user | MySQL username (typically `root`) |
 | host | MySQL host address |
+| port | MySQL port (default 3306) |
 | database | Name of your GhostCMS database |
 | password | Password for the MySQL user |
 | ghost_path | Absolute path to the Ghost `content` directory |
