@@ -86,7 +86,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-This process automatically creates a backup of the DB file and Content folder in the backup path.
+This process automatically creates a backup of the DB file and Content folder in the `backup_path`.
 
 Add `--dry` if you want to simulate the action without actually executing it.
 
@@ -99,7 +99,7 @@ If you want to take a risky one-way trip without backup, use `--nobackup`.
 python cleanup.py
 ```
 
-This process collects the images to be deleted and creates a compressed file in the backup path.
+This process collects the images to be deleted and creates a compressed file in the `backup_path`.
 
 As with Step 5, you can use `--dry` and `--nobackup`.
 
@@ -115,11 +115,11 @@ To apply the changes completely â€” including the logo, cover image, and icon â€
 
 ### Recovery Guide
 
-If any error occurs during execution, restore your GhostCMS using the automatically generated backup files located in the `backup` directory.
+If any error occurs during execution, restore your GhostCMS using the automatically generated backup files located in the `backup_path` directory.
 
 ### About step 6
 
 Review the **Image Cleanup List** carefully before proceeding.  
 Type **yes** to confirm the operation.  
-If something goes wrong during this step, use the `unused_images_backup_{database}...tar.gz` file from the `backup` directory to restore the images.
+If something goes wrong during this step, use the `unused_images_backup_{database}...tar.gz` file from the `backup_path` directory to restore the images.
 `tar -zxvf /path/to/backup/unused_images_backup_...tar.gz -C /`
