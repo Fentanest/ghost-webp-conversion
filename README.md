@@ -1,5 +1,7 @@
 # Instruction
 
+Check out [worklazy.net](https://worklazy.net) or [hb.worklazy.net](https://hb.worklazy.net) to see a blog that converted all images to WebP using this project.
+
 <br>
 
 ## Caution
