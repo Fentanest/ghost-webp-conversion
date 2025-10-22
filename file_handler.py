@@ -131,6 +131,7 @@ def find_images(images_path, log_path, database_name):
 def _convert_worker(args):
     """
     Worker function to convert a single image. To be used by a multiprocessing Pool.
+    If the target WebP file already exists, it finds a unique name by appending a number.
     """
     image_path, duplicates, quality, images_path, dry_run = args
     try:
@@ -138,35 +139,46 @@ def _convert_worker(args):
         output_dir = os.path.dirname(image_path)
         
         is_duplicate = any(image_path in path_list for path_list in duplicates.values())
-        final_basename = original_basename # Start with original basename
+        final_basename = original_basename
 
-        # Check for _o suffix
         has_o_suffix = False
         if final_basename.lower().endswith('_o'):
             has_o_suffix = True
-            # Temporarily remove _o to apply duplicate handling
-            final_basename = final_basename[:-2] # Remove '_o'
+            final_basename = final_basename[:-2]
 
         if is_duplicate:
-            # Apply duplicate handling
-            # The current logic appends original_ext.replace('.', '_')
             final_basename = f"{final_basename}{original_ext.replace('.', '_')}"
         
-        # Re-add _o suffix if it was present
         if has_o_suffix:
             final_basename = f"{final_basename}_o"
 
+        # Determine initial output path
         output_filename = f"{final_basename}.webp"
         output_path = os.path.join(output_dir, output_filename)
 
-        if not dry_run: # Only save if not dry_run
+        # If the file already exists, find a unique name by appending a counter
+        # This check is done for both dry-run and actual run to ensure logging is accurate.
+        if os.path.exists(output_path):
+            counter = 1
+            base_name_for_uniqueness = final_basename
+            while os.path.exists(output_path):
+                # Create a new name like 'filename_1.webp', 'filename_2.webp', etc.
+                unique_basename = f"{base_name_for_uniqueness}_{counter}"
+                output_filename = f"{unique_basename}.webp"
+                output_path = os.path.join(output_dir, output_filename)
+                counter += 1
+                # Safety break to prevent infinite loops in unexpected scenarios
+                if counter > 100:
+                    raise Exception(f"Could not find a unique filename for {image_path} after 100 attempts.")
+
+        if not dry_run:
             with Image.open(image_path) as img:
-                # Ensure image is in a mode that supports saving as webp (e.g., RGB)
                 if img.mode not in ('RGB', 'RGBA'):
                     img = img.convert('RGB')
                 img.save(output_path, 'webp', quality=quality)
         else:
-            print(f"DRY RUN: Would convert {image_path} to {output_path}") # Log dry run conversion
+            # The output_path will reflect the unique name if the original existed
+            print(f"DRY RUN: Would convert {image_path} to {output_path}")
 
         relative_original = os.path.relpath(image_path, images_path)
         relative_new = os.path.relpath(output_path, images_path)

@@ -3,6 +3,7 @@ import os
 import re
 import mysql.connector
 import config
+from db_handler import verify_db_connection_or_abort
 import argparse
 import itertools
 import datetime
@@ -138,42 +139,45 @@ def _check_pigz_installed():
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
 
-def backup_and_delete_unused_images(unused_files, backup_path, log_path, database_name, dry_run=False, nobackup=False):
+def backup_and_delete_unused_images(unused_files, backup_path, log_path, database_name, args):
     """
     Logs, backs up, and deletes the list of unused files.
     If dry_run is True, only prints the files that would be deleted.
     If nobackup is True, skips the backup process.
     """
+    dry_run = args.dry
+    nobackup = args.nobackup
+
+    # 1. Display unused files list
+    if unused_files:
+        print("The following files are unused:")
+        for filepath in unused_files:
+            print(f"- {filepath}")
+    else:
+        print("No unused images found to delete.")
+
+    # 2. Display current configuration
+    print("\n--- Current Configuration & Settings ---")
+    print(f"Database Host: {config.db_config.get('host', 'N/A')}")
+    print(f"Database Name: {config.db_config.get('database', 'N/A')}")
+    print(f"Ghost Images Path: {config.images_path}")
+    print(f"Backup Path: {config.backup_path}")
+    print(f"Log Path: {config.log_path}")
+    print("---")
+    print(f"Dry Run Mode: {'Yes' if dry_run else 'No'}")
+    print(f"Skip Backups: {'Yes' if nobackup else 'No'}")
+    print("----------------------------------------")
+
+    # Exit if there's nothing to do.
     if not unused_files:
-        print("No unused files to process.")
         return
 
     if dry_run:
         print("\n--- DRY RUN MODE ---")
-        print(f"Found {len(unused_files)} unused files.")
-        print("The following files would be backed up and deleted:")
-        for filepath in unused_files:
-            print(f"- {filepath}")
-        print("\nNo actual changes will be made.")
+        print("No actual changes will be made.")
         return
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # Log the files to be deleted
-    if not os.path.exists(log_path):
-        os.makedirs(log_path)
-    log_filepath = os.path.join(log_path, f"unused_files_log_{database_name}_{timestamp}.log")
-    with open(log_filepath, 'w') as f:
-        for filepath in unused_files:
-            f.write(f"{filepath}\n")
-    print(f"List of unused files saved to: {log_filepath}")
-
-    print("\n--- Unused Files Found ---")
-    for filepath in unused_files:
-        print(f"- {filepath}")
-    print("--------------------------")
-
-    # Confirm with the user before deleting
+    # 3. Prompt
     print("\n--- WARNING ---")
     print(f"You are about to delete {len(unused_files)} files.")
     if nobackup:
@@ -185,6 +189,18 @@ def backup_and_delete_unused_images(unused_files, backup_path, log_path, databas
     if user_input.lower() != 'yes':
         print("Cleanup cancelled by user.")
         return
+
+    # Backup and delete logic starts here, only if user confirms
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Log the files to be deleted
+    if not os.path.exists(log_path):
+        os.makedirs(log_path)
+    log_filepath = os.path.join(log_path, f"unused_files_log_{database_name}_{timestamp}.log")
+    with open(log_filepath, 'w') as f:
+        for filepath in unused_files:
+            f.write(f"{filepath}\n")
+    print(f"List of unused files saved to: {log_filepath}")
 
     # Backup the files
     if not nobackup:
@@ -258,10 +274,13 @@ if __name__ == "__main__":
     if args.dry:
         print("--- Running in DRY RUN mode. No files will be deleted. ---\n")
 
+    # Verify database connection before anything else
+    verify_db_connection_or_abort(config.db_config)
+
     print("Starting the unused image cleanup process...")
     database_name = config.db_config['database']
     
     unused_images = find_unused_images(config.images_path, config.db_config, dry_run=args.dry)
-    
+
     if unused_images is not None:
-        backup_and_delete_unused_images(unused_images, config.backup_path, config.log_path, database_name, dry_run=args.dry, nobackup=args.nobackup)
+        backup_and_delete_unused_images(unused_images, config.backup_path, config.log_path, database_name, args)

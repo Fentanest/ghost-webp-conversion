@@ -7,6 +7,43 @@ import mysql.connector
 import json
 from bs4 import BeautifulSoup
 
+def check_db_connection_and_existence(db_config):
+    """
+    Checks if a connection to the database server can be established and if the specified database exists.
+    """
+    try:
+        # Connect without specifying the database first to check server/credentials
+        print("Verifying database connection...")
+        conn = mysql.connector.connect(
+            user=db_config['user'],
+            password=db_config['password'],
+            host=db_config['host']
+        )
+        
+        # Now check if the database exists
+        cursor = conn.cursor()
+        db_name = db_config['database']
+        cursor.execute(f"SHOW DATABASES LIKE '{db_name}'")
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if result:
+            print("Database connection successful and database exists.")
+            return True
+        else:
+            print(f"Error: Database '{db_name}' not found on the server.")
+            return False
+
+    except mysql.connector.Error as e:
+        print(f"Error connecting to the MySQL database: {e}")
+        print("Please check your database configuration (host, user, password) in config.py.")
+        return False
+    except KeyError as e:
+        print(f"Error: Missing required key {e} in db_config in config.py.")
+        return False
+
+
 def backup_database(db_config, backup_path, nobackup=False, dry_run=False):
     """
     Dumps the MySQL database to a .sql file.
@@ -320,3 +357,13 @@ def restore_plaintext(db_config, plaintext_backup_path, dry_run=False):
     except Exception as e:
         print(f"An unexpected error occurred during plaintext restoration: {e}")
         return -1
+
+def verify_db_connection_or_abort(db_config):
+    """
+    Verifies the database connection and aborts the program if it fails.
+    """
+    print("--- Verifying database connection ---")
+    if not check_db_connection_and_existence(db_config):
+        print("Database check failed. Aborting.")
+        exit()
+    print("----------------------------------------")

@@ -1,6 +1,16 @@
 # Instruction
 
-### Usage Instructions
+<br>
+
+## Caution
+
+When running for the first time, use the `--dry﻿` option to preview the entire operation, and avoid using the `--nobackup﻿` option.
+
+Make sure to verify that the correct values are set in `config.py﻿` before starting.
+
+<br>
+
+## Usage Instructions
 
 1. Install pigz, mysqldump (also Python and venv if you don't have)
    - Debian / Ubuntu:
