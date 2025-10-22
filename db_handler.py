@@ -17,7 +17,8 @@ def check_db_connection_and_existence(db_config):
         conn = mysql.connector.connect(
             user=db_config['user'],
             password=db_config['password'],
-            host=db_config['host']
+            host=db_config['host'],
+            port=db_config.get('port', 3306)
         )
         
         # Now check if the database exists
@@ -72,6 +73,7 @@ def backup_database(db_config, backup_path, nobackup=False, dry_run=False):
             f'--user={db_config["user"]}',
             f'--password={db_config["password"]}',
             f'--host={db_config["host"]}',
+            f'--port={db_config.get("port", 3306)}',
             db_config['database']
         ]
 

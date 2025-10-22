@@ -3,6 +3,7 @@ db_config = {
     'user': 'your_mysql_user',
     'password': 'your_mysql_password',
     'host': 'your_mysql_host',
+    'port': 3306,
     'database': 'your_mysql_database'
 }
 

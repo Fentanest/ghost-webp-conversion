@@ -14,6 +14,7 @@ def main(dry_run=False, nobackup=False):
     # Display current configuration and ask for user confirmation
     print("\n--- Current Configuration & Settings ---")
     print(f"Database Host: {config.db_config.get('host', 'N/A')}")
+    print(f"Database Port: {config.db_config.get('port', 'N/A')}")
     print(f"Database Name: {config.db_config.get('database', 'N/A')}")
     print(f"Ghost Path: {config.ghost_path}")
     print(f"Images Path: {config.images_path}")
