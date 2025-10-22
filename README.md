@@ -2,7 +2,7 @@
 
 ### Usage Instructions
 
-1. Install pigz, mysqldump
+1. Install pigz, mysqldump (also Python and venv if you don't have)
    - Debian / Ubuntu:
      ```
      sudo apt update
