@@ -7,18 +7,22 @@
      ```
      sudo apt update
      sudo apt install mysql-client pigz
+     sudo apt install python3 python3-venv
      ```
    - RHEL / CentOS / Fedora (YUM/DNF):
      ```
      sudo dnf install mariadb pigz
+     sudo dnf install python3 python3-venv
      ```
    - openSUSE:
      ```
      sudo zypper install mariadb-client pigz
+     sudo zypper install python3 python3-venv
      ```
    - Arch Linux:
      ```
      sudo pacman -S mariadb pigz
+     sudo pacman -S python python-virtualenv
      ```
 <br>
 
