@@ -1,12 +1,34 @@
 # main.py
 import config
-from db_handler import backup_database, backup_plaintext, update_image_links, restore_plaintext
-from file_handler import backup_ghost_files, find_images, convert_images_to_webp
+from db_handler import verify_db_connection_or_abort, backup_plaintext, update_image_links, restore_plaintext
+from file_handler import find_images, convert_images_to_webp
 import argparse
 
 def main(dry_run=False, nobackup=False):
     """Main function to run the conversion process."""
+    # Step 0: Verify database connection before anything else
+    verify_db_connection_or_abort(config.db_config)
+
     print("Starting the Ghost WebP conversion process...")
+
+    # Display current configuration and ask for user confirmation
+    print("\n--- Current Configuration & Settings ---")
+    print(f"Database Host: {config.db_config.get('host', 'N/A')}")
+    print(f"Database Name: {config.db_config.get('database', 'N/A')}")
+    print(f"Ghost Path: {config.ghost_path}")
+    print(f"Images Path: {config.images_path}")
+    print(f"Backup Path: {config.backup_path}")
+    print(f"Log Path: {config.log_path}")
+    print(f"WebP Quality: {config.webp_quality}")
+    print("---")
+    print(f"Dry Run Mode: {'Yes' if dry_run else 'No'}")
+    print(f"Skip Backups: {'Yes' if nobackup else 'No'}")
+    print("----------------------------------------")
+
+    user_input = input("Do you want to proceed with the process based on these settings? (yes/no): ")
+    if user_input.lower() != 'yes':
+        print("Process aborted by user.")
+        return
 
     database_name = config.db_config['database']
 
@@ -22,25 +44,16 @@ def main(dry_run=False, nobackup=False):
     # --- End Confirmation ---
 
     # Step 1: Backup
-    print("\n--- Step 1: Backing up database and files ---")
-    db_backup_file = None
-    ghost_backup_file = None
     if not nobackup:
-        db_backup_file = backup_database(config.db_config, config.backup_path, nobackup=nobackup, dry_run=dry_run) # Pass dry_run
-        ghost_backup_file = backup_ghost_files(config.ghost_path, config.backup_path, database_name, nobackup=nobackup, dry_run=dry_run) # Pass dry_run
-
-        if not db_backup_file or not ghost_backup_file:
-            if not dry_run: # Only abort if not dry_run and backup actually failed
-                print("\nBackup failed. Aborting the process.")
+        from backup import run_backup_process
+        if not run_backup_process(dry_run=dry_run, assume_yes=True):
+            # The run_backup_process function prints its own errors.
+            # We just need to abort the main script if it fails.
+            if not dry_run:
+                print("\nBackup step failed. Aborting the main process.")
                 return
-            else: # In dry_run, just print a warning
-                print("\nDRY RUN: Backup would have failed or been skipped.")
-
-
-        if db_backup_file: # Only print if backup was actually performed/simulated
-            print(f"\nDatabase backed up to: {db_backup_file}")
-        if ghost_backup_file: # Only print if backup was actually performed/simulated
-            print(f"Ghost content backed up to: {ghost_backup_file}")
+            else:
+                print("\nDRY RUN: Backup step would have failed.")
     else:
         print("Skipping database and Ghost file backup as per --nobackup option.")
 
@@ -95,6 +108,6 @@ if __name__ == "__main__":
     if args.dry:
         print("--- Running in DRY RUN mode. No actual conversions or database updates will be performed. ---\n")
     if args.nobackup:
-        print("--- Running with --nobackup option. All backup processes will be skipped. ---\n")
+        print("--- Running with --nobackup option. All backup processes will be skipped. ---")
 
     main(dry_run=args.dry, nobackup=args.nobackup)
