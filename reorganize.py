@@ -8,7 +8,7 @@ import argparse
 import datetime
 from bs4 import BeautifulSoup
 import multiprocessing
-from urllib.parse import urlparse, urlunparse
+from file_handler import _process_url # Import _process_url from file_handler
 
 def get_posts_with_media(db_config):
     """Fetches posts that contain image, video, or audio links in their HTML content, or have a feature image."""
@@ -145,7 +145,7 @@ def update_database_links(db_config, conversion_map, dry_run=False):
                         for img_tag in soup.find_all('img'):
                             if 'src' in img_tag.attrs:
                                 old_src = img_tag['src']
-                                new_src = _process_url(old_src, conversion_map)
+                                new_src = _process_url(old_src, conversion_map, config.images_path, config.media_path)
                                 if new_src != old_src:
                                     img_tag['src'] = new_src
                                     html_changed = True
@@ -162,7 +162,7 @@ def update_database_links(db_config, conversion_map, dry_run=False):
                                     url = url_descriptor[0]
                                     descriptor = url_descriptor[1] if len(url_descriptor) > 1 else ''
 
-                                    new_url = _process_url(url, conversion_map)
+                                    new_url = _process_url(url, conversion_map, config.images_path, config.media_path)
                                     new_srcset_parts.append(f"{new_url} {descriptor}" if descriptor else new_url)
                                 
                                 new_srcset = ", ".join(new_srcset_parts)
@@ -174,7 +174,7 @@ def update_database_links(db_config, conversion_map, dry_run=False):
                         for media_tag in soup.find_all(['video', 'audio']):
                             if 'src' in media_tag.attrs:
                                 old_src = media_tag['src']
-                                new_src = _process_url(old_src, conversion_map)
+                                new_src = _process_url(old_src, conversion_map, config.images_path, config.media_path)
                                 if new_src != old_src:
                                     media_tag['src'] = new_src
                                     html_changed = True
@@ -182,7 +182,7 @@ def update_database_links(db_config, conversion_map, dry_run=False):
                             for source_tag in media_tag.find_all('source'):
                                 if 'src' in source_tag.attrs:
                                     old_src = source_tag['src']
-                                    new_src = _process_url(old_src, conversion_map)
+                                    new_src = _process_url(old_src, conversion_map, config.images_path, config.media_path)
                                     if new_src != old_src:
                                         source_tag['src'] = new_src
                                         html_changed = True
@@ -191,7 +191,7 @@ def update_database_links(db_config, conversion_map, dry_run=False):
                             new_html = str(soup)
 
                     if original_feature_image:
-                        new_feature_image = _process_url(original_feature_image, conversion_map)
+                        new_feature_image = _process_url(original_feature_image, conversion_map, config.images_path, config.media_path)
                         if new_feature_image != original_feature_image:
                             feature_image_changed = True
 
