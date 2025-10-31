@@ -1,9 +1,7 @@
 # cleanup.py
 import os
 import re
-import mysql.connector
 import config
-from db_handler import verify_db_connection_or_abort
 import argparse
 import itertools
 import datetime
@@ -11,120 +9,175 @@ import tarfile
 import subprocess
 import multiprocessing
 import tempfile
+import requests
+import jwt
+import json
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse
+from datetime import datetime, timedelta
 
-def get_used_images_from_db(db_config):
-    """Scans the database to find all image paths currently in use."""
-    print("Scanning database for used images...")
-    used_images = set()
-    image_path_regex = re.compile(r'/content/images/[A-Za-z0-9\.\-\_/]+')
-    ghost_url_prefix = '__GHOST_URL__'
-
+def generate_jwt(api_key):
+    """Generates a JWT for Ghost Admin API authentication."""
     try:
-        with mysql.connector.connect(**db_config) as conn:
-            with conn.cursor(dictionary=True) as cursor:
-                # Scan posts table
-                cursor.execute("SELECT html, feature_image FROM posts")
-                posts = cursor.fetchall()
-                for post in posts:
-                    if post['html']:
-                        used_images.update(image_path_regex.findall(post['html']))
-                    if post['feature_image']:
-                        feature_img_path = post['feature_image']
-                        if feature_img_path.startswith(ghost_url_prefix):
-                            feature_img_path = feature_img_path[len(ghost_url_prefix):]
-                        if feature_img_path.startswith('/content/images/'):
-                            used_images.add(feature_img_path)
-
-                # Scan settings table
-                setting_keys = ('logo', 'cover_image', 'icon')
-                query_template = "SELECT `value` FROM settings WHERE `key` IN ({})"
-                in_clause = ', '.join(['%s'] * len(setting_keys))
-                query = query_template.format(in_clause)
-                cursor.execute(query, setting_keys)
-                settings = cursor.fetchall()
-                for setting in settings:
-                    if setting['value']:
-                        setting_path = setting['value']
-                        if setting_path.startswith(ghost_url_prefix):
-                            setting_path = setting_path[len(ghost_url_prefix):]
-                        if setting_path.startswith('/content/images/'):
-                            used_images.add(setting_path)
-
-        print(f"Found {len(used_images)} unique image paths in the database.")
-        return used_images
-
-    except mysql.connector.Error as e:
-        print(f"Database error while scanning for images: {e}")
+        key_id, secret = api_key.split(':')
+        secret_bytes = bytes.fromhex(secret)
+        payload = {
+            'iat': int(datetime.now().timestamp()),
+            'exp': int((datetime.now() + timedelta(minutes=5)).timestamp()),
+            'aud': '/admin/'
+        }
+        token = jwt.encode(
+            payload,
+            secret_bytes,
+            algorithm='HS256',
+            headers={'alg': 'HS256', 'typ': 'JWT', 'kid': key_id}
+        )
+        return token
+    except Exception as e:
+        print(f"Error generating JWT: {e}")
         return None
 
-def find_unused_images(images_path, db_config, dry_run=False):
-    """Compares images on disk with images used in the DB to find orphans."""
-    used_db_paths = get_used_images_from_db(db_config)
-    if used_db_paths is None:
-        return None # Error occurred in DB scan
+def get_used_images_from_api():
+    """Scans Ghost via the Admin API to find all image paths currently in use."""
+    print("Scanning Ghost API for used images...")
+    used_images = set()
+    # Regex to find any URL-like string pointing to content (images or media)
+    url_regex = re.compile(r'''https?://[^/\s"'\)]+/content/(?:images|media)/[^\s"'\)]+''')
 
-    print("Scanning filesystem for all images...")
+    token = generate_jwt(config.ghost_admin_api_key)
+    if not token:
+        print("Failed to generate API token. Please check your Admin API Key in config.py.")
+        return None
+
+    headers = {'Authorization': f'Ghost {token}'}
+    api_url = config.ghost_api_url.rstrip('/')
+
+    try:
+        with requests.Session() as s:
+            s.headers.update(headers)
+
+            # 1. Scan posts
+            posts_url = f"{api_url}/ghost/api/admin/posts/?limit=all&formats=html,mobiledoc&fields=html,feature_image,mobiledoc"
+            print("Fetching all posts via API...")
+            response = s.get(posts_url)
+            response.raise_for_status()
+            posts = response.json().get('posts', [])
+            
+            for post in posts:
+                # --- Process HTML field ---
+                if post.get('html'):
+                    # Use BeautifulSoup for accurate parsing of src/srcset
+                    soup = BeautifulSoup(post['html'], 'html.parser')
+                    for tag in soup.find_all(['img', 'video', 'audio', 'source']):
+                        if tag.has_attr('src'):
+                            path = urlparse(tag['src']).path
+                            if path.startswith(('/content/images/', '/content/media/')):
+                                used_images.add(path)
+                        if tag.has_attr('srcset'):
+                            for srcset_part in tag['srcset'].split(','):
+                                url = srcset_part.strip().split(' ')[0]
+                                path = urlparse(url).path
+                                if path.startswith(('/content/images/', '/content/media/')):
+                                    used_images.add(path)
+                    # Also run a generic regex for anything missed (e.g., background-image)
+                    missed_urls = url_regex.findall(post['html'])
+                    for url in missed_urls:
+                        used_images.add(urlparse(url).path)
+
+                # --- Process mobiledoc field ---
+                if post.get('mobiledoc'):
+                    mobiledoc_urls = url_regex.findall(post['mobiledoc'])
+                    for url in mobiledoc_urls:
+                        used_images.add(urlparse(url).path)
+
+                # --- Process feature_image ---
+                if post.get('feature_image'):
+                    path = urlparse(post['feature_image']).path
+                    if path.startswith(('/content/images/', '/content/media/')):
+                        used_images.add(path)
+
+            # 2. Scan settings
+            print("Fetching settings via API...")
+            settings_url = f"{api_url}/ghost/api/admin/settings/"
+            response = s.get(settings_url)
+            response.raise_for_status()
+            settings_data = response.json().get('settings', [])
+            settings = {s['key']: s['value'] for s in settings_data}
+
+            for key in ('logo', 'cover_image', 'icon'):
+                if settings.get(key):
+                    path = urlparse(settings[key]).path
+                    if path.startswith(('/content/images/', '/content/media/')):
+                        used_images.add(path)
+
+        print(f"Found {len(used_images)} unique image paths in use via API.")
+        return used_images
+
+    except requests.exceptions.RequestException as e:
+        print(f"API error while scanning for images: {e}")
+        if e.response:
+            print(f"Response: {e.response.text}")
+        return None
+
+def find_unused_images(images_path, log_path, dry_run=False):
+    """Compares images on disk with images used in the API to find orphans."""
+    used_api_paths = get_used_images_from_api()
+    if used_api_paths is None:
+        return None # Error occurred in API scan
+
+    # Save the list of used images to a file for debugging
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    used_images_log_path = os.path.join(log_path, f"used_images_from_api_{timestamp}.json")
+    print(f"\nSaving list of {len(used_api_paths)} used images to: {used_images_log_path}")
+    with open(used_images_log_path, 'w', encoding='utf-8') as f:
+        json.dump(list(used_api_paths), f, indent=2, ensure_ascii=False)
+
+    print("\nScanning filesystem for all images...")
     physical_files = {}
     for root, _, files in os.walk(images_path):
         for file in files:
             absolute_path = os.path.join(root, file)
-            # Create a DB-style path to compare with used_db_paths
             relative_path = os.path.relpath(absolute_path, images_path)
-            db_style_path = os.path.join('/content/images', relative_path)
+            db_style_path = os.path.join('/content/images', relative_path).replace('\\', '/')
             physical_files[db_style_path] = absolute_path
     
     print(f"Found {len(physical_files)} total image files on disk.")
 
-    # This regex will remove /size/w.../ and /format/.../ parts of a path
     size_regex = re.compile(r'/size/w\d+')
-    format_regex = re.compile(r'/format/\w+') # Handles webp and potentially others
+    format_regex = re.compile(r'/format/\w+')
 
     print("Normalizing used image paths to identify base images...\n")
     base_used_paths = set()
-    for path in used_db_paths:
-        # Strip both size and format to get the true base path
-        # e.g., /content/images/size/w300/format/webp/2023/img.png -> /content/images/2023/img.png
+    for path in used_api_paths:
         base_path = format_regex.sub('', size_regex.sub('', path.strip()))
         base_used_paths.add(base_path)
     print(f"Found {len(base_used_paths)} unique base images in use.")
 
     if dry_run:
         print("\n--- DRY RUN: Base Used Paths (sample) ---\n")
-        for path in itertools.islice(base_used_paths, 5):
+        for path in itertools.islice(base_used_paths, 15):
             print(f"- {path}")
         print("\n-------------------------------------\n")
 
-    # Find unused files by checking if their base path is in the set of used base paths.
     unused_file_paths = []
-    
-    # Removed the entire per-file debug logging block here
-
     for db_style_path, absolute_path in physical_files.items():
-        # Apply the same normalization to the physical file's path
         base_physical_path = format_regex.sub('', size_regex.sub('', db_style_path))
         is_used = False
 
-        # Check 1: Is the exact base path used?
         if base_physical_path in base_used_paths:
             is_used = True
         else:
-            # Check 2: Is it an _o file whose non-_o version is used?
-            # Extract filename and extension
             path_dir, path_filename = os.path.split(base_physical_path)
             filename_no_ext, ext = os.path.splitext(path_filename)
 
             if filename_no_ext.lower().endswith('_o'):
-                # Construct the path without _o
-                filename_without_o = filename_no_ext[:-2] # Remove '_o'
-                o_stripped_base_path = os.path.join(path_dir, filename_without_o + ext)
-                
+                filename_without_o = filename_no_ext[:-2]
+                o_stripped_base_path = os.path.join(path_dir, filename_without_o + ext).replace('\\', '/')
                 if o_stripped_base_path in base_used_paths:
                     is_used = True
         
         if not is_used:
             unused_file_paths.append(absolute_path)
-
-    # Removed the "--- END DRY RUN ANALYSIS ---" here
 
     print(f"Found {len(unused_file_paths)} unused images.")
     return unused_file_paths
@@ -139,7 +192,7 @@ def _check_pigz_installed():
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
 
-def backup_and_delete_unused_images(unused_files, backup_path, log_path, database_name, args):
+def backup_and_delete_unused_images(unused_files, backup_path, log_path, args):
     """
     Logs, backs up, and deletes the list of unused files.
     If dry_run is True, only prints the files that would be deleted.
@@ -148,7 +201,6 @@ def backup_and_delete_unused_images(unused_files, backup_path, log_path, databas
     dry_run = args.dry
     nobackup = args.nobackup
 
-    # 1. Display unused files list
     if unused_files:
         print("The following files are unused:")
         for filepath in unused_files:
@@ -156,11 +208,8 @@ def backup_and_delete_unused_images(unused_files, backup_path, log_path, databas
     else:
         print("No unused images found to delete.")
 
-    # 2. Display current configuration
     print("\n--- Current Configuration & Settings ---")
-    print(f"Database Host: {config.db_config.get('host', 'N/A')}")
-    print(f"Database Port: {config.db_config.get('port', 'N/A')}")
-    print(f"Database Name: {config.db_config.get('database', 'N/A')}")
+    print(f"Ghost API URL: {config.ghost_api_url}")
     print(f"Ghost Images Path: {config.images_path}")
     print(f"Backup Path: {config.backup_path}")
     print(f"Log Path: {config.log_path}")
@@ -169,7 +218,6 @@ def backup_and_delete_unused_images(unused_files, backup_path, log_path, databas
     print(f"Skip Backups: {'Yes' if nobackup else 'No'}")
     print("----------------------------------------")
 
-    # Exit if there's nothing to do.
     if not unused_files:
         return
 
@@ -178,7 +226,6 @@ def backup_and_delete_unused_images(unused_files, backup_path, log_path, databas
         print("No actual changes will be made.")
         return
 
-    # 3. Prompt
     print("\n--- WARNING ---")
     print(f"You are about to delete {len(unused_files)} files.")
     if nobackup:
@@ -191,23 +238,20 @@ def backup_and_delete_unused_images(unused_files, backup_path, log_path, databas
         print("Cleanup cancelled by user.")
         return
 
-    # Backup and delete logic starts here, only if user confirms
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    # Log the files to be deleted
     if not os.path.exists(log_path):
         os.makedirs(log_path)
-    log_filepath = os.path.join(log_path, f"unused_files_log_{database_name}_{timestamp}.log")
+    log_filepath = os.path.join(log_path, f"unused_files_log_{timestamp}.log")
     with open(log_filepath, 'w') as f:
         for filepath in unused_files:
             f.write(f"{filepath}\n")
     print(f"List of unused files saved to: {log_filepath}")
 
-    # Backup the files
     if not nobackup:
         if not os.path.exists(backup_path):
             os.makedirs(backup_path)
-        backup_filepath = os.path.join(backup_path, f"unused_images_backup_{database_name}_{timestamp}.tar.gz")
+        backup_filepath = os.path.join(backup_path, f"unused_images_backup_{timestamp}.tar.gz")
         print(f"Backing up unused files to {backup_filepath}...")
 
         if _check_pigz_installed():
@@ -254,7 +298,6 @@ def backup_and_delete_unused_images(unused_files, backup_path, log_path, databas
     else:
         print("\nSkipping backup as per --nobackup option.")
 
-    # Delete the files
     print("\nDeleting unused files...")
     deleted_count = 0
     for filepath in unused_files:
@@ -275,13 +318,9 @@ if __name__ == "__main__":
     if args.dry:
         print("--- Running in DRY RUN mode. No files will be deleted. ---\n")
 
-    # Verify database connection before anything else
-    verify_db_connection_or_abort(config.db_config)
-
     print("Starting the unused image cleanup process...")
-    database_name = config.db_config['database']
     
-    unused_images = find_unused_images(config.images_path, config.db_config, dry_run=args.dry)
+    unused_images = find_unused_images(config.images_path, config.log_path, dry_run=args.dry)
 
     if unused_images is not None:
-        backup_and_delete_unused_images(unused_images, config.backup_path, config.log_path, database_name, args)
+        backup_and_delete_unused_images(unused_images, config.backup_path, config.log_path, args)
