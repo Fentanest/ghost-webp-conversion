@@ -15,6 +15,10 @@ ghost_path = '/path/to/your/ghost'
 # Example: '/var/lib/ghost/content/images'
 images_path = '/path/to/your/ghost/content/images'
 
+# Absolute path to the Ghost CMS media directory
+# Example: '/var/lib/ghost/content/media'
+media_path = '/path/to/your/ghost/content/media'
+
 # Path to store backup files
 backup_path = '/path/to/your/backup/directory'
 
