@@ -296,11 +296,11 @@ def convert_images_to_webp(image_paths, duplicates, quality, log_path, images_pa
                 original_absolute_url = f"{api_url_base}{url_path_original}"
 
                 # 1. Filesystem path -> new Filesystem path
-                reorganization_map[original_filesystem_path] = new_webp_filesystem_path
+                conversion_map[original_filesystem_path] = new_webp_filesystem_path
                 # 2. URL path -> new URL path
-                reorganization_map[url_path_original] = url_path_new
+                conversion_map[url_path_original] = url_path_new
                 # 3. Absolute URL -> new absolute URL
-                reorganization_map[original_absolute_url] = new_absolute_url
+                conversion_map[original_absolute_url] = new_absolute_url
             
             elif result[0] == 'skipped':
                 _, image_path, reason = result
