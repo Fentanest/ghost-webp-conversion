@@ -77,6 +77,13 @@ def analyze_and_generate_map(posts, images_path, media_path, ghost_api_url):
             try:
                 parsed_url = urlparse(url)
                 path = parsed_url.path
+                filename = os.path.basename(path)
+
+                # Exclude files without extension or .ico files
+                _, ext = os.path.splitext(filename)
+                if not ext or ext.lower() == '.ico':
+                    continue
+
             except ValueError:
                 continue # Skip malformed URLs
 

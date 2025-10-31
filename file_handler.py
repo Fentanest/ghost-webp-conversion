@@ -210,6 +210,11 @@ def _convert_worker(args):
     """
     image_path, duplicates, quality, images_path, dry_run = args
     try:
+        # Exclude files without an extension or .ico files
+        _, ext = os.path.splitext(image_path)
+        if not ext or ext.lower() == '.ico':
+            return ('skipped', image_path, 'File has no extension or is an icon file.')
+
         original_basename, original_ext = os.path.splitext(os.path.basename(image_path))
         output_dir = os.path.dirname(image_path)
         
@@ -291,16 +296,18 @@ def convert_images_to_webp(image_paths, duplicates, quality, log_path, images_pa
                 original_absolute_url = f"{api_url_base}{url_path_original}"
 
                 # 1. Filesystem path -> new Filesystem path
-                conversion_map[original_filesystem_path] = new_webp_filesystem_path
+                reorganization_map[original_filesystem_path] = new_webp_filesystem_path
                 # 2. URL path -> new URL path
-                conversion_map[url_path_original] = url_path_new
+                reorganization_map[url_path_original] = url_path_new
                 # 3. Absolute URL -> new absolute URL
-                conversion_map[original_absolute_url] = new_absolute_url
-            else:
+                reorganization_map[original_absolute_url] = new_absolute_url
+            
+            elif result[0] == 'skipped':
+                _, image_path, reason = result
+                log_file.write(f"SKIPPED: {image_path} ({reason})\n")
+
+            else: # error
                 _, image_path, error_message, _, _ = result
-                error_line = f"Failed to convert {image_path}: {error_message}\n"
-                print(error_line.strip())
-                log_file.write(error_line)
 
     print(f"Image conversion finished. Log saved to: {conversion_log_path}")
     return conversion_map
