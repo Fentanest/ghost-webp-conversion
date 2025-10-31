@@ -5,6 +5,7 @@ import config
 import argparse
 from datetime import datetime, timedelta
 import json
+import mimetypes
 import requests
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
@@ -102,6 +103,14 @@ def analyze_and_generate_map(posts, images_path, media_path, ghost_api_url):
             media_counter += 1
             
             original_basename, original_ext = os.path.splitext(os.path.basename(original_abs_path))
+
+            if not original_ext:
+                mimetype, _ = mimetypes.guess_type(original_abs_path)
+                if mimetype:
+                    guessed_ext = mimetypes.guess_extension(mimetype)
+                    if guessed_ext:
+                        original_ext = guessed_ext
+
             new_filename = f"{slug}-{media_counter}{original_ext}"
             new_dir = os.path.join(base_path, slug)
             new_abs_path = os.path.join(new_dir, new_filename)
