@@ -3,6 +3,9 @@
 ghost_api_url = 'https://your-ghost-domain.com'  # e.g., https://blog.example.com
 ghost_admin_api_key = 'your_admin_api_key'
 
+# JWT token expiration time in minutes
+jwt_expiration_minutes = 5
+
 # MySQL database configuration
 # NOTE: This is still required for backup.py and reorganize.py
 db_config = {

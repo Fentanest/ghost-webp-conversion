@@ -21,9 +21,13 @@ def generate_jwt(api_key):
     try:
         key_id, secret = api_key.split(':')
         secret_bytes = bytes.fromhex(secret)
+
+        # Use the expiration time from config, default to 5 minutes if not set
+        expiration_minutes = getattr(config, 'jwt_expiration_minutes', 5)
+
         payload = {
             'iat': int(datetime.now().timestamp()),
-            'exp': int((datetime.now() + timedelta(minutes=5)).timestamp()),
+            'exp': int((datetime.now() + timedelta(minutes=expiration_minutes)).timestamp()),
             'aud': '/admin/'
         }
         token = jwt.encode(

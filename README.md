@@ -75,6 +75,7 @@ nano config.py
 | `webp_quality` | The desired quality for WebP conversion (0–100). |
 | `ghost_api_url` | The URL of your Ghost site (e.g., `https://your.blog.com`). |
 | `ghost_admin_api_key` | Your Ghost Admin API Key for authentication. |
+| `jwt_expiration_minutes` | The expiration time for JWT tokens in minutes (default is 5). |
 
 ### 4. Set Up a Python Virtual Environment
 ```bash
