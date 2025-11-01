@@ -113,11 +113,106 @@ def execute_alt_tag_updates(posts_to_update):
     
     print(f"\nSuccessfully updated {updated_count} posts.")
 
+def restore_alt_tags(log_filepath, dry_run=False):
+    """Restores alt tags from a given log file."""
+    print(f"--- Starting alt tag restoration from log: {log_filepath} ---")
+
+    if not os.path.exists(log_filepath):
+        print(f"Error: Log file not found at {log_filepath}")
+        return
+
+    with open(log_filepath, 'r', encoding='utf-8') as f:
+        changes_log = json.load(f)
+
+    if not changes_log:
+        print("Log file is empty. Nothing to restore.")
+        return
+
+    # Group changes by post slug
+    changes_by_slug = {}
+    for change in changes_log:
+        slug = change['post_slug']
+        if slug not in changes_by_slug:
+            changes_by_slug[slug] = []
+        changes_by_slug[slug].append(change)
+
+    print(f"Found {len(changes_log)} changes to restore across {len(changes_by_slug)} posts.")
+
+    # Fetch all posts to get their current state
+    token = generate_jwt(config.ghost_admin_api_key)
+    if not token:
+        print("Failed to generate API token.")
+        return
+    
+    headers = {'Authorization': f'Ghost {token}'}
+    api_url = config.ghost_api_url.rstrip('/')
+    posts_url = f"{api_url}/ghost/api/admin/posts/?limit=all&formats=html"
+    
+    try:
+        response = requests.get(posts_url, headers=headers)
+        response.raise_for_status()
+        all_posts = response.json().get('posts', [])
+        posts_map = {post['slug']: post for post in all_posts}
+    except requests.exceptions.RequestException as e:
+        print(f"API error while fetching posts: {e}")
+        return
+
+    posts_to_update = []
+    for slug, changes in changes_by_slug.items():
+        if slug not in posts_map:
+            print(f"Warning: Post with slug '{slug}' not found. Skipping.")
+            continue
+
+        post = posts_map[slug]
+        html = post.get('html')
+        if not html:
+            continue
+
+        soup = BeautifulSoup(html, 'html.parser')
+        post_changed = False
+
+        for change in changes:
+            # Find the specific image tag by src
+            img_tag = soup.find('img', {'src': change['image_src']})
+            if img_tag:
+                img_tag['alt'] = change['old_alt']
+                post_changed = True
+            else:
+                print(f"Warning: Image with src '{change['image_src']}' not found in post '{slug}'.")
+
+        if post_changed:
+            post['soup'] = soup
+            posts_to_update.append(post)
+
+    if not posts_to_update:
+        print("No posts needed to be updated.")
+        return
+
+    print(f"\n{len(posts_to_update)} posts will be restored.")
+    if dry_run:
+        print("--- DRY RUN: The following posts would be restored ---")
+        for post in posts_to_update:
+            print(f"- {post.get('slug')}")
+        return
+
+    user_input = input("Are you sure you want to restore these alt tags? (yes/no): ")
+    if user_input.lower() != 'yes':
+        print("Restoration aborted by user.")
+        return
+
+    execute_alt_tag_updates(posts_to_update)
+    print("\n--- Alt tag restoration process finished successfully! ---")
+
 def main():
-    parser = argparse.ArgumentParser(description="Automatically add alt tags to images in Ghost posts.")
-    parser.add_argument('--dry', action='store_true', help="Run analysis and generate log, but do not ask for confirmation or execute changes.")
+    parser = argparse.ArgumentParser(description="Automatically add or restore alt tags to images in Ghost posts.")
+    parser.add_argument('--dry', action='store_true', help="Run in dry-run mode. No changes will be made.")
     parser.add_argument('--force', action='store_true', help="Force overwrite of existing alt tags.")
+    parser.add_argument('--restore', type=str, metavar='LOG_FILE', help="Restore alt tags from a given alt_tags_log JSON file.")
     args = parser.parse_args()
+
+    if args.restore:
+        restore_alt_tags(args.restore, args.dry)
+        return
 
     # 1. Analyze and generate the change list
     posts_to_update, changes_log = analyze_alt_tags(force=args.force)

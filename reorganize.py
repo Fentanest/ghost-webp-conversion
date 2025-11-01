@@ -174,10 +174,63 @@ def execute_file_moves(file_move_ops, dry_run=False):
 
     print(f"Finished moving {moved_count} files.")
 
+
+def restore_from_map(map_filepath, dry_run=False):
+    """Restores file locations and database entries from a reorganization map."""
+    print(f"--- Starting restoration from map: {map_filepath} ---")
+    
+    if not os.path.exists(map_filepath):
+        print(f"Error: Map file not found at {map_filepath}")
+        return
+
+    with open(map_filepath, 'r', encoding='utf-8') as f:
+        reorg_map = json.load(f)
+
+    if not reorg_map:
+        print("Map file is empty. Nothing to restore.")
+        return
+
+    # 1. Create reversed map for API updates and file moves
+    reversed_api_map = {}
+    file_move_ops = []
+    
+    for old, new in reorg_map.items():
+        # Reverse API URL paths
+        if old.startswith('http') or old.startswith('/content/'):
+            reversed_api_map[new] = old
+        # Reverse file system paths
+        else:
+            file_move_ops.append((new, old))
+
+    # 2. Ask for user confirmation
+    print(f"Found {len(file_move_ops)} files to move back and {len(reversed_api_map)} URL references to update.")
+    if dry_run:
+        print("--- Running in DRY RUN mode. No actual changes will be made. ---")
+    
+    user_input = input("Are you sure you want to restore this state? This is irreversible. (yes/no): ")
+    if user_input.lower() != 'yes':
+        print("Restoration aborted by user.")
+        return
+
+    # 3. Execute the file moves to restore original locations
+    execute_file_moves(file_move_ops, dry_run)
+
+    # 4. Update links via API using the reversed map
+    print("\nStarting API update process to restore original URLs...")
+    update_image_links_via_api(reversed_api_map, dry_run, config.log_path, "restore_reorganization")
+
+    print("\n--- Restoration process finished successfully! ---")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Reorganize Ghost CMS media into slug-based folders and update via API.")
     parser.add_argument('--dry', action='store_true', help="Run in dry-run mode. No files will be moved or API updates made.")
+    parser.add_argument('--restore', type=str, metavar='MAP_FILE', help="Restore from a given reorganization_map JSON file.")
     args = parser.parse_args()
+
+    if args.restore:
+        restore_from_map(args.restore, args.dry)
+        return
 
     if args.dry:
         print("--- Running in DRY RUN mode. No actual changes will be made. ---\n")
