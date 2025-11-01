@@ -15,31 +15,9 @@ import json
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
+from api_handler import generate_jwt
 
-def generate_jwt(api_key):
-    """Generates a JWT for Ghost Admin API authentication."""
-    try:
-        key_id, secret = api_key.split(':')
-        secret_bytes = bytes.fromhex(secret)
 
-        # Use the expiration time from config, default to 5 minutes if not set
-        expiration_minutes = getattr(config, 'jwt_expiration_minutes', 5)
-
-        payload = {
-            'iat': int(datetime.now().timestamp()),
-            'exp': int((datetime.now() + timedelta(minutes=expiration_minutes)).timestamp()),
-            'aud': '/admin/'
-        }
-        token = jwt.encode(
-            payload,
-            secret_bytes,
-            algorithm='HS256',
-            headers={'alg': 'HS256', 'typ': 'JWT', 'kid': key_id}
-        )
-        return token
-    except Exception as e:
-        print(f"Error generating JWT: {e}")
-        return None
 
 def get_used_images_from_api():
     """Scans Ghost via the Admin API to find all image paths currently in use."""
