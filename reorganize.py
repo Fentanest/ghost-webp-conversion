@@ -61,6 +61,9 @@ def analyze_and_generate_map(posts, images_path, media_path, ghost_api_url):
             urls_to_process.append(post['feature_image'])
 
         for tag in soup.find_all(['img', 'video', 'audio', 'source']):
+            # Skip media within a thumbnail or metadata bookmark
+            if tag.find_parent("div", class_=("kg-bookmark-thumbnail", "kg-bookmark-metadata")):
+                continue
             if tag.get('src'):
                 urls_to_process.append(tag['src'])
             if tag.get('srcset'):

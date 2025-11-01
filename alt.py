@@ -43,6 +43,10 @@ def analyze_alt_tags(force=False):
             img_tags = soup.find_all('img')
 
             for tag in img_tags:
+                # Skip images within a thumbnail or metadata bookmark
+                if tag.find_parent("div", class_=("kg-bookmark-thumbnail", "kg-bookmark-metadata")):
+                    continue
+
                 old_alt_text = tag.get('alt', '')
                 if force or not old_alt_text.strip():
                     src = tag.get('src')
