@@ -13,9 +13,9 @@ from bs4 import BeautifulSoup
 # Import shared API functions
 from api_handler import generate_jwt, update_image_links_via_api
 
-def get_all_posts_via_api():
-    """Fetches all posts from the Ghost API with the necessary fields for reorganization."""
-    print("Fetching all posts via API...")
+def get_all_content_via_api():
+    """Fetches all posts and pages from the Ghost API with the necessary fields for reorganization."""
+    print("Fetching all posts and pages via API...")
     token = generate_jwt(config.ghost_admin_api_key)
     if not token:
         print("Failed to generate API token.")
@@ -23,42 +23,46 @@ def get_all_posts_via_api():
 
     headers = {'Authorization': f'Ghost {token}'}
     api_url = config.ghost_api_url.rstrip('/')
-    posts_url = f"{api_url}/ghost/api/admin/posts/?limit=all&formats=html,mobiledoc&fields=slug,id,html,feature_image,mobiledoc"
+    all_items = []
 
-    try:
-        response = requests.get(posts_url, headers=headers)
-        response.raise_for_status()
-        posts = response.json().get('posts', [])
-        print(f"Found {len(posts)} posts to analyze.")
-        return posts
-    except requests.exceptions.RequestException as e:
-        print(f"API error while fetching posts: {e}")
-        return None
+    for content_type in ['posts', 'pages']:
+        content_url = f"{api_url}/ghost/api/admin/{content_type}/?limit=all&formats=html,mobiledoc&fields=slug,id,html,feature_image,mobiledoc"
+        try:
+            response = requests.get(content_url, headers=headers)
+            response.raise_for_status()
+            items = response.json().get(content_type, [])
+            all_items.extend(items)
+            print(f"Found {len(items)} {content_type} to analyze.")
+        except requests.exceptions.RequestException as e:
+            print(f"API error while fetching {content_type}: {e}")
+            return None
+            
+    return all_items
 
-def analyze_and_generate_map(posts, images_path, media_path, ghost_api_url):
-    """Analyzes posts, determines new paths for media, and generates a map and a list of file move operations."""
+def analyze_and_generate_map(content_items, images_path, media_path, ghost_api_url):
+    """Analyzes posts and pages, determines new paths for media, and generates a map and a list of file move operations."""
     print("Analyzing media paths for reorganization...")
     reorganization_map = {}
     file_move_operations = []
     globally_processed_files = set()
     api_url_base = ghost_api_url.rstrip('/')
 
-    # Sort posts by slug to have some consistency
-    posts.sort(key=lambda p: p.get('slug', ''))
+    # Sort items by slug to have some consistency
+    content_items.sort(key=lambda p: p.get('slug', ''))
 
-    for post in posts:
-        slug = post.get('slug')
+    for item in content_items:
+        slug = item.get('slug')
         if not slug:
-            print(f"Skipping post ID {post.get('id')} because it has no slug.")
+            print(f"Skipping item ID {item.get('id')} because it has no slug.")
             continue
 
-        soup = BeautifulSoup(post.get('html') or '', 'html.parser')
+        soup = BeautifulSoup(item.get('html') or '', 'html.parser')
         media_counter = 0
 
-        # --- 1. Gather all media URLs from the post (feature_image, src, srcset) ---
+        # --- 1. Gather all media URLs from the item (feature_image, src, srcset) ---
         urls_to_process = []
-        if post.get('feature_image'):
-            urls_to_process.append(post['feature_image'])
+        if item.get('feature_image'):
+            urls_to_process.append(item['feature_image'])
 
         for tag in soup.find_all(['img', 'video', 'audio', 'source']):
             # Skip media within a thumbnail or metadata bookmark
@@ -235,14 +239,14 @@ def main():
     if args.dry:
         print("--- Running in DRY RUN mode. No actual changes will be made. ---\n")
 
-    # 1. Get all posts via API
-    posts = get_all_posts_via_api()
-    if not posts:
+    # 1. Get all posts and pages via API
+    content_items = get_all_content_via_api()
+    if not content_items:
         return
 
     # 2. Analyze and generate the reorganization map and file move operations
     reorg_map, move_ops = analyze_and_generate_map(
-        posts, config.images_path, config.media_path, config.ghost_api_url
+        content_items, config.images_path, config.media_path, config.ghost_api_url
     )
 
     # 3. Save the generated map to a JSON file for inspection

@@ -68,132 +68,131 @@ def update_image_links_via_api(conversion_map, dry_run=False, log_path='.', data
             if i >= 100: break
             f.write(f"KEY  : {key}\nVALUE: {value}\n---\n")
 
-    updated_posts_count = 0
-    updated_settings_count = 0
+    updated_items_count = 0
 
     with requests.Session() as s:
         s.headers.update(headers)
 
-        # --- Update Posts ---
-        try:
-            posts_url = f"{api_url}/ghost/api/admin/posts/?limit=all&formats=html,mobiledoc"
-            print("Fetching all posts via Ghost API...")
-            response = s.get(posts_url)
-            response.raise_for_status()
-            posts = response.json().get('posts', [])
-            print(f"Found {len(posts)} posts to check.")
+        for content_type in ['posts', 'pages']:
+            try:
+                content_url = f"{api_url}/ghost/api/admin/{content_type}/?limit=all&formats=html,mobiledoc"
+                print(f"Fetching all {content_type} via Ghost API...")
+                response = s.get(content_url)
+                response.raise_for_status()
+                items = response.json().get(content_type, [])
+                print(f"Found {len(items)} {content_type} to check.")
 
-            for post in posts:
-                original_html = post.get('html', '')
-                if not original_html:
-                    continue
+                for item in items:
+                    original_html = item.get('html', '')
+                    if not original_html:
+                        continue
 
-                with open(api_debug_log_path, 'a', encoding='utf-8') as f:
-                    f.write(f"\n============================================================\n")
-                    f.write(f"Processing Post ID: {post['id']}, Slug: {post['slug']}\n")
-                    f.write(f"============================================================\n\n")
-                    f.write("--- Original HTML ---\n")
-                    f.write(original_html + "\n\n")
+                    with open(api_debug_log_path, 'a', encoding='utf-8') as f:
+                        f.write(f"\n============================================================\n")
+                        f.write(f"Processing {content_type[:-1].capitalize()} ID: {item['id']}, Slug: {item['slug']}\n")
+                        f.write(f"============================================================\n\n")
+                        f.write("--- Original HTML ---\n")
+                        f.write(original_html + "\n\n")
 
-                soup = BeautifulSoup(original_html, 'html.parser')
-                html_changed = False
+                    soup = BeautifulSoup(original_html, 'html.parser')
+                    html_changed = False
 
-                # Update <img>, <video>, <audio> tags
-                for tag in soup.find_all(['img', 'video', 'audio']):
-                    # Process 'src'
-                    if tag.has_attr('src'):
-                        old_src = tag['src']
-                        new_src = _process_url(old_src, conversion_map)
-                        with open(api_debug_log_path, 'a', encoding='utf-8') as f:
-                            f.write(f"--- Checking src ---\n")
-                            f.write(f"Found URL: {old_src}\n")
-                            f.write(f"Converted: {new_src}\n")
-                            f.write(f"Changed  : {new_src != old_src}\n\n")
-                        if new_src != old_src:
-                            tag['src'] = new_src
-                            html_changed = True
-                            
-                    # Process 'srcset' for <img>
-                    if tag.name == 'img' and tag.has_attr('srcset'):
-                        old_srcset = tag['srcset']
-                        new_srcset_parts = []
-                        for part in old_srcset.split(','):
-                            part = part.strip()
-                            if not part: continue
-                            url_descriptor = part.rsplit(' ', 1)
-                            url, descriptor = (url_descriptor[0], url_descriptor[1]) if len(url_descriptor) > 1 else (url_descriptor[0], '')
-                            new_url = _process_url(url, conversion_map)
-                            with open(api_debug_log_path, 'a', encoding='utf-8') as f:
-                                f.write(f"--- Checking srcset part ---\n")
-                                f.write(f"Found URL: {url}\n")
-                                f.write(f"Converted: {new_url}\n")
-                                f.write(f"Changed  : {new_url != url}\n\n")
-                            new_srcset_parts.append(f"{new_url} {descriptor}" if descriptor else new_url)
-                        new_srcset = ", ".join(new_srcset_parts)
-                        if new_srcset != old_srcset:
-                            tag['srcset'] = new_srcset
-                            html_changed = True
-                            
-                    # Process <source> children
-                    for source_tag in tag.find_all('source'):
-                        if source_tag.has_attr('src'):
-                            old_src = source_tag['src']
+                    # Update <img>, <video>, <audio> tags
+                    for tag in soup.find_all(['img', 'video', 'audio']):
+                        # Process 'src'
+                        if tag.has_attr('src'):
+                            old_src = tag['src']
                             new_src = _process_url(old_src, conversion_map)
                             with open(api_debug_log_path, 'a', encoding='utf-8') as f:
-                                f.write(f"--- Checking <source> src ---\n")
+                                f.write(f"--- Checking src ---\n")
                                 f.write(f"Found URL: {old_src}\n")
                                 f.write(f"Converted: {new_src}\n")
                                 f.write(f"Changed  : {new_src != old_src}\n\n")
                             if new_src != old_src:
-                                source_tag['src'] = new_src
+                                tag['src'] = new_src
                                 html_changed = True
-                
-                # --- Process Feature Image ---
-                old_feature_image = post.get('feature_image')
-                if old_feature_image:
-                    new_feature_image = _process_url(old_feature_image, conversion_map)
+                                
+                        # Process 'srcset' for <img>
+                        if tag.name == 'img' and tag.has_attr('srcset'):
+                            old_srcset = tag['srcset']
+                            new_srcset_parts = []
+                            for part in old_srcset.split(','):
+                                part = part.strip()
+                                if not part: continue
+                                url_descriptor = part.rsplit(' ', 1)
+                                url, descriptor = (url_descriptor[0], url_descriptor[1]) if len(url_descriptor) > 1 else (url_descriptor[0], '')
+                                new_url = _process_url(url, conversion_map)
+                                with open(api_debug_log_path, 'a', encoding='utf-8') as f:
+                                    f.write(f"--- Checking srcset part ---\n")
+                                    f.write(f"Found URL: {url}\n")
+                                    f.write(f"Converted: {new_url}\n")
+                                    f.write(f"Changed  : {new_url != url}\n\n")
+                                new_srcset_parts.append(f"{new_url} {descriptor}" if descriptor else new_url)
+                            new_srcset = ", ".join(new_srcset_parts)
+                            if new_srcset != old_srcset:
+                                tag['srcset'] = new_srcset
+                                html_changed = True
+                                
+                        # Process <source> children
+                        for source_tag in tag.find_all('source'):
+                            if source_tag.has_attr('src'):
+                                old_src = source_tag['src']
+                                new_src = _process_url(old_src, conversion_map)
+                                with open(api_debug_log_path, 'a', encoding='utf-8') as f:
+                                    f.write(f"--- Checking <source> src ---\n")
+                                    f.write(f"Found URL: {old_src}\n")
+                                    f.write(f"Converted: {new_src}\n")
+                                    f.write(f"Changed  : {new_src != old_src}\n\n")
+                                if new_src != old_src:
+                                    source_tag['src'] = new_src
+                                    html_changed = True
                     
-                    with open(api_debug_log_path, 'a', encoding='utf-8') as f:
-                        f.write(f"--- Checking feature_image ---\n")
-                        f.write(f"Found URL: {old_feature_image}\n")
-                        f.write(f"Converted: {new_feature_image}\n")
-                        f.write(f"Changed  : {new_feature_image != old_feature_image}\n\n")
+                    # --- Process Feature Image ---
+                    old_feature_image = item.get('feature_image')
+                    if old_feature_image:
+                        new_feature_image = _process_url(old_feature_image, conversion_map)
+                        
+                        with open(api_debug_log_path, 'a', encoding='utf-8') as f:
+                            f.write(f"--- Checking feature_image ---\n")
+                            f.write(f"Found URL: {old_feature_image}\n")
+                            f.write(f"Converted: {new_feature_image}\n")
+                            f.write(f"Changed  : {new_feature_image != old_feature_image}\n\n")
 
-                    if new_feature_image != old_feature_image:
-                        post['feature_image'] = new_feature_image
-                        html_changed = True # Use the same flag to trigger an update
+                        if new_feature_image != old_feature_image:
+                            item['feature_image'] = new_feature_image
+                            html_changed = True # Use the same flag to trigger an update
 
-                if html_changed:
-                    modified_html = str(soup)
-                    post['html'] = modified_html
-                    with open(api_debug_log_path, 'a', encoding='utf-8') as f:
-                        f.write("--- Final (Modified) HTML ---\n")
-                        f.write(modified_html + "\n\n")
-                    
-                    if not dry_run:
-                        try:
-                            post.pop('mobiledoc', None)
-                            update_url = f"{api_url}/ghost/api/admin/posts/{post['id']}/?source=html"
-                            response = s.put(update_url, json={'posts': [post]})
-                            response.raise_for_status()
-                            logging.info(f"Successfully updated post ID {post['id']} ('{post['slug']}').")
-                            updated_posts_count += 1
-                        except requests.exceptions.RequestException as e:
-                            error_msg = f"Error updating post ID {post['id']} via API: {e.response.text}"
-                            print(error_msg)
-                            logging.error(error_msg)
-                else:
-                    with open(api_debug_log_path, 'a', encoding='utf-8') as f:
-                        f.write("--- No changes made to HTML ---\n\n")
+                    if html_changed:
+                        modified_html = str(soup)
+                        item['html'] = modified_html
+                        with open(api_debug_log_path, 'a', encoding='utf-8') as f:
+                            f.write("--- Final (Modified) HTML ---\n")
+                            f.write(modified_html + "\n\n")
+                        
+                        if not dry_run:
+                            try:
+                                item.pop('mobiledoc', None)
+                                update_url = f"{api_url}/ghost/api/admin/{content_type}/{item['id']}/?source=html"
+                                response = s.put(update_url, json={content_type: [item]})
+                                response.raise_for_status()
+                                logging.info(f"Successfully updated {content_type[:-1]} ID {item['id']} ('{item['slug']}').")
+                                updated_items_count += 1
+                            except requests.exceptions.RequestException as e:
+                                error_msg = f"Error updating {content_type[:-1]} ID {item['id']} via API: {e.response.text}"
+                                print(error_msg)
+                                logging.error(error_msg)
+                    else:
+                        with open(api_debug_log_path, 'a', encoding='utf-8') as f:
+                            f.write("--- No changes made to HTML ---\n\n")
 
-        except requests.exceptions.RequestException as e:
-            error_msg = f"Error fetching posts via API: {e.response.text if e.response else e}"
-            print(error_msg)
-            logging.error(error_msg)
-            return -1, -1
+            except requests.exceptions.RequestException as e:
+                error_msg = f"Error fetching {content_type} via API: {e.response.text if e.response else e}"
+                print(error_msg)
+                logging.error(error_msg)
+                return -1, -1
 
     print(f"\nAPI update process finished.")
-    print(f"Updated {updated_posts_count} posts and 0 settings.")
-    logging.info(f"Finished. Updated {updated_posts_count} posts and 0 settings.")
+    print(f"Updated {updated_items_count} posts/pages and 0 settings.")
+    logging.info(f"Finished. Updated {updated_items_count} posts/pages and 0 settings.")
     
-    return updated_posts_count, 0
+    return updated_items_count, 0

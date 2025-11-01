@@ -38,45 +38,45 @@ def get_used_images_from_api():
         with requests.Session() as s:
             s.headers.update(headers)
 
-            # 1. Scan posts
-            posts_url = f"{api_url}/ghost/api/admin/posts/?limit=all&formats=html,mobiledoc&fields=html,feature_image,mobiledoc"
-            print("Fetching all posts via API...")
-            response = s.get(posts_url)
-            response.raise_for_status()
-            posts = response.json().get('posts', [])
-            
-            for post in posts:
-                # --- Process HTML field ---
-                if post.get('html'):
-                    # Use BeautifulSoup for accurate parsing of src/srcset
-                    soup = BeautifulSoup(post['html'], 'html.parser')
-                    for tag in soup.find_all(['img', 'video', 'audio', 'source']):
-                        if tag.has_attr('src'):
-                            path = urlparse(tag['src']).path
-                            if path.startswith(('/content/images/', '/content/media/')):
-                                used_images.add(path)
-                        if tag.has_attr('srcset'):
-                            for srcset_part in tag['srcset'].split(','):
-                                url = srcset_part.strip().split(' ')[0]
-                                path = urlparse(url).path
+            for content_type in ['posts', 'pages']:
+                content_url = f"{api_url}/ghost/api/admin/{content_type}/?limit=all&formats=html,mobiledoc&fields=html,feature_image,mobiledoc"
+                print(f"Fetching all {content_type} via API...")
+                response = s.get(content_url)
+                response.raise_for_status()
+                items = response.json().get(content_type, [])
+                
+                for item in items:
+                    # --- Process HTML field ---
+                    if item.get('html'):
+                        # Use BeautifulSoup for accurate parsing of src/srcset
+                        soup = BeautifulSoup(item['html'], 'html.parser')
+                        for tag in soup.find_all(['img', 'video', 'audio', 'source']):
+                            if tag.has_attr('src'):
+                                path = urlparse(tag['src']).path
                                 if path.startswith(('/content/images/', '/content/media/')):
                                     used_images.add(path)
-                    # Also run a generic regex for anything missed (e.g., background-image)
-                    missed_urls = url_regex.findall(post['html'])
-                    for url in missed_urls:
-                        used_images.add(urlparse(url).path)
+                            if tag.has_attr('srcset'):
+                                for srcset_part in tag['srcset'].split(','):
+                                    url = srcset_part.strip().split(' ')[0]
+                                    path = urlparse(url).path
+                                    if path.startswith(('/content/images/', '/content/media/')):
+                                        used_images.add(path)
+                        # Also run a generic regex for anything missed (e.g., background-image)
+                        missed_urls = url_regex.findall(item['html'])
+                        for url in missed_urls:
+                            used_images.add(urlparse(url).path)
 
-                # --- Process mobiledoc field ---
-                if post.get('mobiledoc'):
-                    mobiledoc_urls = url_regex.findall(post['mobiledoc'])
-                    for url in mobiledoc_urls:
-                        used_images.add(urlparse(url).path)
+                    # --- Process mobiledoc field ---
+                    if item.get('mobiledoc'):
+                        mobiledoc_urls = url_regex.findall(item['mobiledoc'])
+                        for url in mobiledoc_urls:
+                            used_images.add(urlparse(url).path)
 
-                # --- Process feature_image ---
-                if post.get('feature_image'):
-                    path = urlparse(post['feature_image']).path
-                    if path.startswith(('/content/images/', '/content/media/')):
-                        used_images.add(path)
+                    # --- Process feature_image ---
+                    if item.get('feature_image'):
+                        path = urlparse(item['feature_image']).path
+                        if path.startswith(('/content/images/', '/content/media/')):
+                            used_images.add(path)
 
             # 2. Scan settings
             print("Fetching settings via API...")

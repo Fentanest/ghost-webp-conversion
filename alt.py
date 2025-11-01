@@ -12,8 +12,8 @@ from bs4 import BeautifulSoup
 from api_handler import generate_jwt
 
 def analyze_alt_tags(force=False):
-    """Analyzes all posts to find images that need alt tag updates."""
-    print("Analyzing posts for alt tag updates...")
+    """Analyzes all posts and pages to find images that need alt tag updates."""
+    print("Analyzing posts and pages for alt tag updates...")
     token = generate_jwt(config.ghost_admin_api_key)
     if not token:
         print("Failed to generate API token.")
@@ -21,73 +21,76 @@ def analyze_alt_tags(force=False):
 
     headers = {'Authorization': f'Ghost {token}'}
     api_url = config.ghost_api_url.rstrip('/')
-    posts_url = f"{api_url}/ghost/api/admin/posts/?limit=all&formats=html"
-
+    
     changes_log = []
-    posts_to_update = []
+    items_to_update = []
 
-    try:
-        print("Fetching all posts via API...")
-        response = requests.get(posts_url, headers=headers)
-        response.raise_for_status()
-        posts = response.json().get('posts', [])
-        print(f"Found {len(posts)} posts to check.")
+    for content_type in ['posts', 'pages']:
+        try:
+            content_url = f"{api_url}/ghost/api/admin/{content_type}/?limit=all&formats=html"
+            print(f"Fetching all {content_type} via API...")
+            response = requests.get(content_url, headers=headers)
+            response.raise_for_status()
+            items = response.json().get(content_type, [])
+            print(f"Found {len(items)} {content_type} to check.")
 
-        for post in posts:
-            post_changed = False
-            html = post.get('html')
-            if not html:
-                continue
-
-            soup = BeautifulSoup(html, 'html.parser')
-            img_tags = soup.find_all('img')
-
-            for tag in img_tags:
-                # Skip images within a thumbnail or metadata bookmark
-                if tag.find_parent("div", class_=("kg-bookmark-thumbnail", "kg-bookmark-metadata")):
+            for item in items:
+                item_changed = False
+                html = item.get('html')
+                if not html:
                     continue
 
-                old_alt_text = tag.get('alt', '')
-                if force or not old_alt_text.strip():
-                    src = tag.get('src')
-                    if not src:
+                soup = BeautifulSoup(html, 'html.parser')
+                img_tags = soup.find_all('img')
+
+                for tag in img_tags:
+                    # Skip images within a thumbnail or metadata bookmark
+                    if tag.find_parent("div", class_=("kg-bookmark-thumbnail", "kg-bookmark-metadata")):
                         continue
-                    
-                    try:
-                        filename = os.path.basename(urlparse(src).path)
-                        _, ext = os.path.splitext(filename)
-                        if not ext or ext.lower() == '.ico':
+
+                    old_alt_text = tag.get('alt', '')
+                    if force or not old_alt_text.strip():
+                        src = tag.get('src')
+                        if not src:
                             continue
+                        
+                        try:
+                            filename = os.path.basename(urlparse(src).path)
+                            _, ext = os.path.splitext(filename)
+                            if not ext or ext.lower() == '.ico':
+                                continue
 
-                        new_alt_text = f"image-{filename}"
-                        if old_alt_text != new_alt_text:
-                            change_details = {
-                                'post_slug': post.get('slug'),
-                                'image_src': src,
-                                'old_alt': old_alt_text,
-                                'new_alt': new_alt_text
-                            }
-                            changes_log.append(change_details)
-                            tag['alt'] = new_alt_text
-                            post_changed = True
-                    except Exception as e:
-                        print(f"Could not process src '{src}' in post '{post.get('slug')}': {e}")
-            
-            if post_changed:
-                post['soup'] = soup # Attach modified soup object for later
-                posts_to_update.append(post)
+                            new_alt_text = f"image-{filename}"
+                            if old_alt_text != new_alt_text:
+                                change_details = {
+                                    'post_slug': item.get('slug'),
+                                    'image_src': src,
+                                    'old_alt': old_alt_text,
+                                    'new_alt': new_alt_text,
+                                    'content_type': content_type
+                                }
+                                changes_log.append(change_details)
+                                tag['alt'] = new_alt_text
+                                item_changed = True
+                        except Exception as e:
+                            print(f"Could not process src '{src}' in {content_type[:-1]} '{item.get('slug')}': {e}")
+                
+                if item_changed:
+                    item['soup'] = soup # Attach modified soup object for later
+                    item['content_type'] = content_type # Add content type for the execution function
+                    items_to_update.append(item)
 
-        return posts_to_update, changes_log
+        except requests.exceptions.RequestException as e:
+            print(f"API error while fetching {content_type}: {e}")
+            if e.response:
+                print(f"Response: {e.response.text}")
+            return None, None
 
-    except requests.exceptions.RequestException as e:
-        print(f"API error while fetching posts: {e}")
-        if e.response:
-            print(f"Response: {e.response.text}")
-        return None, None
+    return items_to_update, changes_log
 
-def execute_alt_tag_updates(posts_to_update):
-    """Executes the API calls to update posts with new alt tags."""
-    print(f"\nExecuting updates for {len(posts_to_update)} posts...")
+def execute_alt_tag_updates(items_to_update):
+    """Executes the API calls to update posts and pages with new alt tags."""
+    print(f"\nExecuting updates for {len(items_to_update)} items...")
     token = generate_jwt(config.ghost_admin_api_key)
     if not token:
         print("Failed to generate API token for execution.")
@@ -99,22 +102,23 @@ def execute_alt_tag_updates(posts_to_update):
 
     with requests.Session() as s:
         s.headers.update(headers)
-        for post in posts_to_update:
-            post['html'] = str(post.pop('soup')) # Get HTML from soup and remove it
+        for item in items_to_update:
+            content_type = item.pop('content_type', 'posts') # Default to posts for backward compatibility
+            item['html'] = str(item.pop('soup')) # Get HTML from soup and remove it
             try:
-                post.pop('mobiledoc', None)
-                update_url = f"{api_url}/ghost/api/admin/posts/{post['id']}/?source=html"
-                response = s.put(update_url, json={'posts': [post]})
+                item.pop('mobiledoc', None)
+                update_url = f"{api_url}/ghost/api/admin/{content_type}/{item['id']}/?source=html"
+                response = s.put(update_url, json={content_type: [item]})
                 response.raise_for_status()
-                print(f"Successfully updated post: {post.get('slug')}")
+                print(f"Successfully updated {content_type[:-1]}: {item.get('slug')}")
                 updated_count += 1
             except requests.exceptions.RequestException as e:
-                print(f"Error updating post {post.get('slug')}: {e.response.text}")
+                print(f"Error updating {content_type[:-1]} {item.get('slug')}: {e.response.text}")
     
-    print(f"\nSuccessfully updated {updated_count} posts.")
+    print(f"\nSuccessfully updated {updated_count} items.")
 
 def restore_alt_tags(log_filepath, dry_run=False):
-    """Restores alt tags from a given log file."""
+    """Restores alt tags from a given log file for both posts and pages."""
     print(f"--- Starting alt tag restoration from log: {log_filepath} ---")
 
     if not os.path.exists(log_filepath):
@@ -128,17 +132,17 @@ def restore_alt_tags(log_filepath, dry_run=False):
         print("Log file is empty. Nothing to restore.")
         return
 
-    # Group changes by post slug
-    changes_by_slug = {}
+    # Group changes by content type and then by slug
+    changes_by_content_type = {'posts': {}, 'pages': {}}
     for change in changes_log:
+        content_type = change.get('content_type', 'posts') # Default to posts for old logs
         slug = change['post_slug']
-        if slug not in changes_by_slug:
-            changes_by_slug[slug] = []
-        changes_by_slug[slug].append(change)
+        if slug not in changes_by_content_type[content_type]:
+            changes_by_content_type[content_type][slug] = []
+        changes_by_content_type[content_type][slug].append(change)
 
-    print(f"Found {len(changes_log)} changes to restore across {len(changes_by_slug)} posts.")
+    print(f"Found {len(changes_log)} changes to restore across posts and pages.")
 
-    # Fetch all posts to get their current state
     token = generate_jwt(config.ghost_admin_api_key)
     if not token:
         print("Failed to generate API token.")
@@ -146,53 +150,58 @@ def restore_alt_tags(log_filepath, dry_run=False):
     
     headers = {'Authorization': f'Ghost {token}'}
     api_url = config.ghost_api_url.rstrip('/')
-    posts_url = f"{api_url}/ghost/api/admin/posts/?limit=all&formats=html"
     
-    try:
-        response = requests.get(posts_url, headers=headers)
-        response.raise_for_status()
-        all_posts = response.json().get('posts', [])
-        posts_map = {post['slug']: post for post in all_posts}
-    except requests.exceptions.RequestException as e:
-        print(f"API error while fetching posts: {e}")
-        return
+    items_to_update = []
 
-    posts_to_update = []
-    for slug, changes in changes_by_slug.items():
-        if slug not in posts_map:
-            print(f"Warning: Post with slug '{slug}' not found. Skipping.")
+    for content_type, slugs in changes_by_content_type.items():
+        if not slugs:
             continue
 
-        post = posts_map[slug]
-        html = post.get('html')
-        if not html:
+        content_url = f"{api_url}/ghost/api/admin/{content_type}/?limit=all&formats=html"
+        try:
+            response = requests.get(content_url, headers=headers)
+            response.raise_for_status()
+            all_items = response.json().get(content_type, [])
+            items_map = {item['slug']: item for item in all_items}
+        except requests.exceptions.RequestException as e:
+            print(f"API error while fetching {content_type}: {e}")
             continue
 
-        soup = BeautifulSoup(html, 'html.parser')
-        post_changed = False
+        for slug, changes in slugs.items():
+            if slug not in items_map:
+                print(f"Warning: {content_type[:-1].capitalize()} with slug '{slug}' not found. Skipping.")
+                continue
 
-        for change in changes:
-            # Find the specific image tag by src
-            img_tag = soup.find('img', {'src': change['image_src']})
-            if img_tag:
-                img_tag['alt'] = change['old_alt']
-                post_changed = True
-            else:
-                print(f"Warning: Image with src '{change['image_src']}' not found in post '{slug}'.")
+            item = items_map[slug]
+            html = item.get('html')
+            if not html:
+                continue
 
-        if post_changed:
-            post['soup'] = soup
-            posts_to_update.append(post)
+            soup = BeautifulSoup(html, 'html.parser')
+            item_changed = False
 
-    if not posts_to_update:
-        print("No posts needed to be updated.")
+            for change in changes:
+                img_tag = soup.find('img', {'src': change['image_src']})
+                if img_tag:
+                    img_tag['alt'] = change['old_alt']
+                    item_changed = True
+                else:
+                    print(f"Warning: Image with src '{change['image_src']}' not found in {content_type[:-1]} '{slug}'.")
+
+            if item_changed:
+                item['soup'] = soup
+                item['content_type'] = content_type
+                items_to_update.append(item)
+
+    if not items_to_update:
+        print("No items needed to be updated.")
         return
 
-    print(f"\n{len(posts_to_update)} posts will be restored.")
+    print(f"\n{len(items_to_update)} posts/pages will be restored.")
     if dry_run:
-        print("--- DRY RUN: The following posts would be restored ---")
-        for post in posts_to_update:
-            print(f"- {post.get('slug')}")
+        print("--- DRY RUN: The following items would be restored ---")
+        for item in items_to_update:
+            print(f"- {item.get('content_type', 'posts')[:-1].capitalize()}: {item.get('slug')}")
         return
 
     user_input = input("Are you sure you want to restore these alt tags? (yes/no): ")
@@ -200,11 +209,11 @@ def restore_alt_tags(log_filepath, dry_run=False):
         print("Restoration aborted by user.")
         return
 
-    execute_alt_tag_updates(posts_to_update)
+    execute_alt_tag_updates(items_to_update)
     print("\n--- Alt tag restoration process finished successfully! ---")
 
 def main():
-    parser = argparse.ArgumentParser(description="Automatically add or restore alt tags to images in Ghost posts.")
+    parser = argparse.ArgumentParser(description="Automatically add or restore alt tags to images in Ghost posts and pages.")
     parser.add_argument('--dry', action='store_true', help="Run in dry-run mode. No changes will be made.")
     parser.add_argument('--force', action='store_true', help="Force overwrite of existing alt tags.")
     parser.add_argument('--restore', type=str, metavar='LOG_FILE', help="Restore alt tags from a given alt_tags_log JSON file.")
@@ -215,9 +224,9 @@ def main():
         return
 
     # 1. Analyze and generate the change list
-    posts_to_update, changes_log = analyze_alt_tags(force=args.force)
+    items_to_update, changes_log = analyze_alt_tags(force=args.force)
 
-    if posts_to_update is None:
+    if items_to_update is None:
         print("\nProcess failed during analysis.")
         return
 
@@ -237,8 +246,8 @@ def main():
         return
 
     # 3. Handle dry run or ask for confirmation
-    updated_posts_count = len(posts_to_update)
-    print(f"\nAnalysis complete. Found {len(changes_log)} images to change across {updated_posts_count} posts.")
+    updated_items_count = len(items_to_update)
+    print(f"\nAnalysis complete. Found {len(changes_log)} images to change across {updated_items_count} posts/pages.")
     print(f"Check the detailed plan at: {log_filepath}")
 
     if args.dry:
@@ -251,7 +260,7 @@ def main():
         return
 
     # 4. Execute the updates
-    execute_alt_tag_updates(posts_to_update)
+    execute_alt_tag_updates(items_to_update)
 
     print("\nAlt tag update process finished successfully!")
 
