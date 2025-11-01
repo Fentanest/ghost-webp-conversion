@@ -180,6 +180,14 @@ def find_unused_images(images_path, log_path, dry_run=False):
             unused_file_paths.append(absolute_path)
 
     print(f"Found {len(unused_file_paths)} unused images.")
+
+    # Save the list of unused images to a file for debugging
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unused_images_log_path = os.path.join(log_path, f"unused_images_to_delete_{timestamp}.json")
+    print(f"\nSaving list of {len(unused_file_paths)} unused images to: {unused_images_log_path}")
+    with open(unused_images_log_path, 'w', encoding='utf-8') as f:
+        json.dump(unused_file_paths, f, indent=2, ensure_ascii=False)
+
     return unused_file_paths
 
 def _check_pigz_installed():

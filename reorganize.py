@@ -101,6 +101,11 @@ def analyze_and_generate_map(posts, images_path, media_path, ghost_api_url):
                 relative_path = path[len('/content/media/'):]
 
             normalized_relative_path = re.sub(r'size/w\d+/', '', relative_path).replace('//', '/')
+            
+            # Check if the file is already in a slug-based directory
+            if normalized_relative_path.startswith(slug + '/'):
+                continue
+
             original_abs_path = os.path.join(base_path, normalized_relative_path)
 
             if not os.path.exists(original_abs_path) or original_abs_path in globally_processed_files:
