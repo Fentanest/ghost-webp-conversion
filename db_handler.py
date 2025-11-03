@@ -20,14 +20,24 @@ def get_mysqldump_ssl_flag():
         return _ssl_flag_cache
 
     try:
-        result = subprocess.run(['mysqldump', '--version'], capture_output=True, text=True, check=True)
+        # Run without check=True and capture stderr to handle noisy clients
+        result = subprocess.run(
+            ['mysqldump', '--version'], 
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        # The version string can be in stdout or stderr, so check the combined output
         version_string = result.stdout.lower()
+
         if 'mariadb' in version_string:
             _ssl_flag_cache = ['--skip-ssl']
         else:
             _ssl_flag_cache = ['--ssl-mode=DISABLED']
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        # Default to the most common flag if detection fails
+            
+    except FileNotFoundError:
+        # This is the only truly critical error.
+        print("Warning: 'mysqldump' command not found. SSL flag detection failed. Defaulting to --ssl-mode=DISABLED.")
         _ssl_flag_cache = ['--ssl-mode=DISABLED']
     
     return _ssl_flag_cache
