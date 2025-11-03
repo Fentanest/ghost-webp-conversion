@@ -25,6 +25,8 @@ def run_backup_process(dry_run=False, assume_yes=False):
         if user_input.lower() != 'yes':
             print("Process aborted by user.")
             return False
+    else:
+        print("Bypassing prompt due to --yes flag.")
 
     verify_db_connection_or_abort(config.db_config)
 
@@ -51,9 +53,10 @@ def run_backup_process(dry_run=False, assume_yes=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Backup utility for Ghost CMS database and content files.")
     parser.add_argument('--dry', action='store_true', help="Run in dry-run mode. No actual backups will be created.")
+    parser.add_argument('--yes', action='store_true', help="Bypass all interactive prompts.")
     args = parser.parse_args()
 
     if args.dry:
         print("--- Running in DRY RUN mode. No actual files will be created. ---\n")
 
-    run_backup_process(dry_run=args.dry)
+    run_backup_process(dry_run=args.dry, assume_yes=args.yes)

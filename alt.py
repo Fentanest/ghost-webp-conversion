@@ -117,7 +117,7 @@ def execute_alt_tag_updates(items_to_update):
     
     print(f"\nSuccessfully updated {updated_count} items.")
 
-def restore_alt_tags(log_filepath, dry_run=False):
+def restore_alt_tags(log_filepath, dry_run=False, assume_yes=False):
     """Restores alt tags from a given log file for both posts and pages."""
     print(f"--- Starting alt tag restoration from log: {log_filepath} ---")
 
@@ -204,10 +204,13 @@ def restore_alt_tags(log_filepath, dry_run=False):
             print(f"- {item.get('content_type', 'posts')[:-1].capitalize()}: {item.get('slug')}")
         return
 
-    user_input = input("Are you sure you want to restore these alt tags? (yes/no): ")
-    if user_input.lower() != 'yes':
-        print("Restoration aborted by user.")
-        return
+    if not assume_yes:
+        user_input = input("Are you sure you want to restore these alt tags? (yes/no): ")
+        if user_input.lower() != 'yes':
+            print("Restoration aborted by user.")
+            return
+    else:
+        print("Bypassing prompt due to --yes flag.")
 
     execute_alt_tag_updates(items_to_update)
     print("\n--- Alt tag restoration process finished successfully! ---")
@@ -217,10 +220,11 @@ def main():
     parser.add_argument('--dry', action='store_true', help="Run in dry-run mode. No changes will be made.")
     parser.add_argument('--force', action='store_true', help="Force overwrite of existing alt tags.")
     parser.add_argument('--restore', type=str, metavar='LOG_FILE', help="Restore alt tags from a given alt_tags_log JSON file.")
+    parser.add_argument('--yes', action='store_true', help="Bypass all interactive prompts.")
     args = parser.parse_args()
 
     if args.restore:
-        restore_alt_tags(args.restore, args.dry)
+        restore_alt_tags(args.restore, args.dry, args.yes)
         return
 
     # 1. Analyze and generate the change list
@@ -254,10 +258,13 @@ def main():
         print("\n--- DRY RUN complete. No changes will be made. ---")
         return
 
-    user_input = input("Do you want to proceed with these updates? (yes/no): ")
-    if user_input.lower() != 'yes':
-        print("Process aborted by user.")
-        return
+    if not args.yes:
+        user_input = input("Do you want to proceed with these updates? (yes/no): ")
+        if user_input.lower() != 'yes':
+            print("Process aborted by user.")
+            return
+    else:
+        print("Bypassing prompt due to --yes flag.")
 
     # 4. Execute the updates
     execute_alt_tag_updates(items_to_update)

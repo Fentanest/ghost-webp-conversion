@@ -18,7 +18,6 @@ from datetime import datetime, timedelta
 from api_handler import generate_jwt
 
 
-
 def get_used_images_from_api():
     """Scans Ghost via the Admin API to find all image paths currently in use."""
     print("Scanning Ghost API for used images...")
@@ -223,10 +222,13 @@ def backup_and_delete_unused_images(unused_files, backup_path, log_path, args):
     else:
         print("A backup archive will be created in the backup directory.")
     
-    user_input = input("Are you sure you want to proceed? (yes/no): ")
-    if user_input.lower() != 'yes':
-        print("Cleanup cancelled by user.")
-        return
+    if not args.yes:
+        user_input = input("Are you sure you want to proceed? (yes/no): ")
+        if user_input.lower() != 'yes':
+            print("Cleanup cancelled by user.")
+            return
+    else:
+        print("Bypassing prompt due to --yes flag.")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
@@ -303,6 +305,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Clean up unused images from Ghost CMS content.")
     parser.add_argument('--dry', action='store_true', help="Run in dry-run mode. Lists files to be deleted but does not delete them. Provides detailed logs.")
     parser.add_argument('--nobackup', action='store_true', help="Skip the backup process and delete files directly.")
+    parser.add_argument('--yes', action='store_true', help="Bypass all interactive prompts.")
     args = parser.parse_args()
 
     if args.dry:

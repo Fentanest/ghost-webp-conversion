@@ -88,36 +88,40 @@ pip install -r requirements.txt
 
 #### Convert Images to WebP
 ```bash
-python main.py [--dry] [--nobackup]
+python main.py [--dry] [--nobackup] [--yes]
 ```
 This script converts images and creates backups of your database and content folder in the `backup_path`.
 - Use `--dry` to simulate the conversion and see what changes would be made without actually modifying any files.
 - Use `--nobackup` to skip the backup process.
+- Use `--yes` to bypass interactive prompts and proceed automatically.
 
 #### Reorganize Media Files
 ```bash
-python reorganize.py [--dry] [--restore MAP_FILE]
+python reorganize.py [--dry] [--restore MAP_FILE] [--yes]
 ```
 This script moves your images and media into slug-based subdirectories.
 - Use `--dry` to simulate the reorganization without moving files or updating the API.
 - Use `--restore MAP_FILE` to revert the changes using a `reorganization_map_*.json` file.
+- Use `--yes` to bypass interactive prompts.
 
 #### Clean Up Unused Images
 ```bash
-python cleanup.py [--dry] [--nobackup]
+python cleanup.py [--dry] [--nobackup] [--yes]
 ```
 This script finds and deletes unused images and creates a compressed backup.
 - Use `--dry` to see which files would be deleted without actually deleting them.
 - Use `--nobackup` to skip the backup process.
+- Use `--yes` to bypass interactive prompts.
 
 #### Update Image Alt Tags
 ```bash
-python alt.py [--dry] [--force] [--restore LOG_FILE]
+python alt.py [--dry] [--force] [--restore LOG_FILE] [--yes]
 ```
 This script automatically populates missing `alt` tags for images.
 - Use `--dry` to see which `alt` tags would be added/updated.
 - Use `--force` to overwrite existing `alt` tags.
 - Use `--restore LOG_FILE` to revert alt tag changes using an `alt_tags_log_*.json` file.
+- Use `--yes` to bypass interactive prompts.
 
 ### 6. Restart Ghost CMS
 To ensure all changes are applied—especially for site-wide images like logos and icons—restart your Ghost instance.

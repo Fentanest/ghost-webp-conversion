@@ -5,7 +5,7 @@ from file_handler import find_images, convert_images_to_webp
 import argparse
 from datetime import datetime
 
-def main(dry_run=False, nobackup=False):
+def main(dry_run=False, nobackup=False, assume_yes=False):
     """Main function to run the conversion process using the Ghost API."""
     print("Starting the Ghost WebP conversion process...")
 
@@ -50,18 +50,24 @@ def main(dry_run=False, nobackup=False):
     print(f"Analysis complete. Found {len(conversion_map) // 3} images to convert and update.")
     print(f"The detailed conversion plan has been saved to: {map_log_path}")
 
-    user_input = input("Do you want to proceed with the full process based on this plan? (yes/no): ")
-    if user_input.lower() != 'yes':
-        print("Process aborted by user.")
-        return
+    if not assume_yes:
+        user_input = input("Do you want to proceed with the full process based on this plan? (yes/no): ")
+        if user_input.lower() != 'yes':
+            print("Process aborted by user.")
+            return
+    else:
+        print("Bypassing prompt due to --yes flag.")
 
     # --- Execution Starts ---
     if nobackup and not dry_run:
         print("\n--- WARNING: --nobackup option is active ---")
-        user_input = input("Are you sure you want to proceed without backups? (yes/no): ")
-        if user_input.lower() != 'yes':
-            print("Process aborted by user.")
-            return
+        if not assume_yes:
+            user_input = input("Are you sure you want to proceed without backups? (yes/no): ")
+            if user_input.lower() != 'yes':
+                print("Process aborted by user.")
+                return
+        else:
+            print("Bypassing prompt due to --yes flag.")
 
     # Step 2: Backup
     if not nobackup:
@@ -98,6 +104,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert Ghost CMS images to WebP and update content via Admin API.")
     parser.add_argument('--dry', action='store_true', help="Run in dry-run mode. No actual conversions or API updates will be performed.")
     parser.add_argument('--nobackup', action='store_true', help="Skip all backup processes. Use with caution!")
+    parser.add_argument('--yes', action='store_true', help="Bypass all interactive prompts and proceed automatically.")
     args = parser.parse_args()
 
     if args.dry:
@@ -105,4 +112,4 @@ if __name__ == "__main__":
     if args.nobackup:
         print("--- Running with --nobackup option. All backup processes will be skipped. ---")
 
-    main(dry_run=args.dry, nobackup=args.nobackup)
+    main(dry_run=args.dry, nobackup=args.nobackup, assume_yes=args.yes)

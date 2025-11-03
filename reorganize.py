@@ -178,8 +178,7 @@ def execute_file_moves(file_move_ops, dry_run=False):
 
     print(f"Finished moving {moved_count} files.")
 
-
-def restore_from_map(map_filepath, dry_run=False):
+def restore_from_map(map_filepath, dry_run=False, assume_yes=False):
     """Restores file locations and database entries from a reorganization map."""
     print(f"--- Starting restoration from map: {map_filepath} ---")
     
@@ -211,10 +210,13 @@ def restore_from_map(map_filepath, dry_run=False):
     if dry_run:
         print("--- Running in DRY RUN mode. No actual changes will be made. ---")
     
-    user_input = input("Are you sure you want to restore this state? This is irreversible. (yes/no): ")
-    if user_input.lower() != 'yes':
-        print("Restoration aborted by user.")
-        return
+    if not assume_yes:
+        user_input = input("Are you sure you want to restore this state? This is irreversible. (yes/no): ")
+        if user_input.lower() != 'yes':
+            print("Restoration aborted by user.")
+            return
+    else:
+        print("Bypassing prompt due to --yes flag.")
 
     # 3. Execute the file moves to restore original locations
     execute_file_moves(file_move_ops, dry_run)
@@ -225,15 +227,15 @@ def restore_from_map(map_filepath, dry_run=False):
 
     print("\n--- Restoration process finished successfully! ---")
 
-
 def main():
     parser = argparse.ArgumentParser(description="Reorganize Ghost CMS media into slug-based folders and update via API.")
     parser.add_argument('--dry', action='store_true', help="Run in dry-run mode. No files will be moved or API updates made.")
     parser.add_argument('--restore', type=str, metavar='MAP_FILE', help="Restore from a given reorganization_map JSON file.")
+    parser.add_argument('--yes', action='store_true', help="Bypass all interactive prompts.")
     args = parser.parse_args()
 
     if args.restore:
-        restore_from_map(args.restore, args.dry)
+        restore_from_map(args.restore, args.dry, args.yes)
         return
 
     if args.dry:
@@ -263,10 +265,13 @@ def main():
     # 4. Ask for user confirmation before proceeding
     print(f"\nAnalysis complete. {len(move_ops)} files will be moved and their links updated.")
     print(f"Check the plan at: {map_log_path}")
-    user_input = input("Do you want to proceed with this reorganization? (yes/no): ")
-    if user_input.lower() != 'yes':
-        print("Process aborted by user.")
-        return
+    if not args.yes:
+        user_input = input("Do you want to proceed with this reorganization? (yes/no): ")
+        if user_input.lower() != 'yes':
+            print("Process aborted by user.")
+            return
+    else:
+        print("Bypassing prompt due to --yes flag.")
 
     # 5. Execute the file moves
     execute_file_moves(move_ops, args.dry)
@@ -279,3 +284,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
