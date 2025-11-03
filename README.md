@@ -171,3 +171,87 @@ To revert alt tag changes, run `alt.py` with the `--restore` flag and the path t
 ```bash
 python alt.py --restore /path/to/logs/alt_tags_log_20231027_123456.json
 ```
+
+
+<br>
+
+# Running with Docker
+
+The easiest way to run this project is by using Docker Compose and the pre-built image from Docker Hub. All configuration is handled in a single `.env` file.
+
+### 1. Prerequisites
+- Docker and Docker Compose installed on your system.
+
+### 2. Configure Your Environment
+This project uses a `.env` file to manage all user-specific settings.
+
+First, copy the provided example file:
+```bash
+cp .env.example .env
+```
+
+Next, open the `.env` file with a text editor and fill in the values for your environment. You **must** provide the absolute paths for the three `HOST_..._PATH` variables.
+
+```
+# .env file
+# ----------------------------------------------------
+# Docker Volume Paths
+# ----------------------------------------------------
+# IMPORTANT: You must provide the ABSOLUTE paths to the directories on your host machine.
+# Example: /home/user/ghost_project/content
+HOST_GHOST_CONTENT_PATH=/path/to/your/ghost/content
+HOST_BACKUP_PATH=/path/to/your/backup/directory
+HOST_LOG_PATH=/path/to/your/log/directory
+
+# ----------------------------------------------------
+# Ghost Admin API
+# ----------------------------------------------------
+GHOST_API_URL=https://your-ghost-domain.com
+GHOST_ADMIN_API_KEY=your_admin_api_key
+
+# ----------------------------------------------------
+# Database Connection
+# ----------------------------------------------------
+DB_USER=your_mysql_user
+DB_PASSWORD=your_mysql_password
+DB_HOST=your_mysql_host
+DB_PORT=3306
+DB_DATABASE=your_mysql_database
+
+# ----------------------------------------------------
+# Script Settings
+# ----------------------------------------------------
+JWT_EXPIRATION_MINUTES=5
+WEBP_QUALITY=80
+```
+**Important:** For database settings, `DB_HOST` should point to your MySQL server's IP address accessible from Docker (e.g., `host.docker.internal` if running Docker Desktop, or the server's network IP).
+
+### 3. Run with Docker Compose
+Once your `.env` file is configured, navigate to the project root directory and run Docker Compose:
+
+```bash
+docker-compose up -d
+```
+This command will pull the `fentanest/ghost-webp-converter:latest` image, read your `.env` file, and start the container in the background.
+
+To view the container's logs, you can run:
+```bash
+docker-compose logs -f
+```
+
+### 4. Executing Scripts within the Container
+With the container running, you can execute any of the scripts using `docker exec`:
+
+```bash
+docker exec -it ghost-webp-converter python main.py --dry
+docker exec -it ghost-webp-converter python reorganize.py
+# etc.
+```
+
+### Building the Image Manually (Optional)
+If you wish to build the image yourself instead of using the pre-built one, you can use the provided `build.sh` script. This requires you to be logged into Docker Hub.
+
+```bash
+./build.sh
+```
+This will build and push a multi-platform image to `fentanest/ghost-webp-converter:latest` and tag it with a new version number.

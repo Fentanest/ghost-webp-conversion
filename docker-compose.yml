@@ -1,0 +1,36 @@
+services:
+  ghost-webp-converter:
+    image: fentanest/ghost-webp-converter:latest
+    container_name: ghost-webp-converter
+    env_file:
+      - .env
+    # All user-configurable environment variables are sourced from the .env file
+    environment:
+      # Ghost Admin API
+      GHOST_API_URL: ${GHOST_API_URL}
+      GHOST_ADMIN_API_KEY: ${GHOST_ADMIN_API_KEY}
+
+      # Database
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_DATABASE: ${DB_DATABASE}
+
+      # Script Settings
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES}
+      WEBP_QUALITY: ${WEBP_QUALITY}
+
+      # Internal container paths (these should generally not be changed)
+      GHOST_PATH: "/var/lib/ghost/content"
+      IMAGES_PATH: "/var/lib/ghost/content/images"
+      MEDIA_PATH: "/var/lib/ghost/content/media"
+      BACKUP_PATH: "/app/backup"
+      LOG_PATH: "/app/log"
+    volumes:
+      # Host paths are sourced from the .env file
+      - ${HOST_GHOST_CONTENT_PATH}:/var/lib/ghost/content
+      - ${HOST_BACKUP_PATH}:/app/backup
+      - ${HOST_LOG_PATH}:/app/log
+    # If you want the container to restart automatically, e.g., after a crash
+    # restart: unless-stopped
