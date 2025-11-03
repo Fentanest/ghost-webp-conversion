@@ -39,6 +39,7 @@ venv/
 .env
 .env.*
 !.env.example
+VERSION
 
 # Local data, logs, and backups
 data/

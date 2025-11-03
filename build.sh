@@ -1,37 +1,29 @@
 #!/bin/bash
 
-# This script automates versioning, and builds and pushes a multi-platform Docker image.
-# It determines the new version by incrementing the latest git tag.
+# This script builds and pushes a multi-platform Docker image to Docker Hub.
+# It uses a local VERSION file for automatic versioning.
 
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
-# --- Git Checks ---
-# Check if the working directory is clean
-if ! git diff-index --quiet HEAD --; then
-    echo "Git working directory is not clean. Please commit or stash your changes."
-    exit 1
+# --- Versioning ---
+# Define the version file
+VERSION_FILE="VERSION"
+
+# Check if the version file exists, create it if not
+if [ ! -f "$VERSION_FILE" ]; then
+  echo "Version file not found. Creating with initial version 0.1.0."
+  echo "0.1.0" > "$VERSION_FILE"
 fi
 
-# Fetch the latest tags from the remote repository
-echo "Fetching latest git tags..."
-git fetch --tags
-
-# --- Versioning ---
-# Get the latest tag, default to v0.0.0 if no tags exist
-LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-echo "Latest git tag is: $LATEST_TAG"
-
-# Increment the patch version (e.g., v1.2.3 -> v1.2.4)
-IFS='.' read -ra V_PARTS <<< "${LATEST_TAG#v}"
-V_PARTS[2]=$((V_PARTS[2] + 1))
-NEW_VERSION="v${V_PARTS[0]}.${V_PARTS[1]}.${V_PARTS[2]}"
-echo "New version will be: $NEW_VERSION"
+# Read the current version
+CURRENT_VERSION=$(cat "$VERSION_FILE")
+echo "Current version is: $CURRENT_VERSION"
 
 # --- Docker Build ---
 # Define image names
 IMAGE_NAME_LATEST="fentanest/ghost-webp-converter:latest"
-IMAGE_NAME_VERSIONED="fentanest/ghost-webp-converter:$NEW_VERSION"
+IMAGE_NAME_VERSIONED="fentanest/ghost-webp-converter:$CURRENT_VERSION"
 
 # Check if the user is logged in to Docker Hub
 if ! docker info | grep -q "Username"; then
@@ -59,10 +51,14 @@ docker buildx build \
 
 echo "Successfully built and pushed images."
 
-# --- Git Tagging ---
-# Create and push the new git tag
-echo "Creating and pushing new git tag: $NEW_VERSION"
-git tag "$NEW_VERSION"
-git push origin "$NEW_VERSION"
+# --- Update Version ---
+# Increment the patch version (e.g., 1.2.3 -> 1.2.4)
+IFS='.' read -ra V_PARTS <<< "$CURRENT_VERSION"
+V_PARTS[2]=$((V_PARTS[2] + 1))
+NEW_VERSION="${V_PARTS[0]}.${V_PARTS[1]}.${V_PARTS[2]}"
+echo "Incrementing version to: $NEW_VERSION"
 
-echo "All done. New version $NEW_VERSION is released."
+# Write the new version back to the file
+echo "$NEW_VERSION" > "$VERSION_FILE"
+
+echo "All done. Version updated to $NEW_VERSION."
