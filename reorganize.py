@@ -227,7 +227,7 @@ def restore_from_map(map_filepath, dry_run=False, assume_yes=False):
 
     print("\n--- Restoration process finished successfully! ---")
 
-def main():
+def main(timestamp):
     parser = argparse.ArgumentParser(description="Reorganize Ghost CMS media into slug-based folders and update via API.")
     parser.add_argument('--dry', action='store_true', help="Run in dry-run mode. No files will be moved or API updates made.")
     parser.add_argument('--restore', type=str, metavar='MAP_FILE', help="Restore from a given reorganization_map JSON file.")
@@ -252,7 +252,6 @@ def main():
     )
 
     # 3. Save the generated map to a JSON file for inspection
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     map_log_path = os.path.join(config.log_path, f"reorganization_map_{timestamp}.json")
     print(f"\nSaving reorganization map with {len(reorg_map)} entries to: {map_log_path}")
     with open(map_log_path, 'w', encoding='utf-8') as f:
@@ -283,5 +282,6 @@ def main():
     print("\nReorganization process finished successfully!")
 
 if __name__ == "__main__":
-    main()
+    execution_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    main(timestamp=execution_timestamp)
 

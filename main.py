@@ -5,8 +5,20 @@ from file_handler import find_images, convert_images_to_webp
 import argparse
 from datetime import datetime
 
-def main(dry_run=False, nobackup=False, assume_yes=False):
+# main.py
+import config
+from api_handler import update_image_links_via_api
+from file_handler import find_images, convert_images_to_webp
+import argparse
+from datetime import datetime
+import json
+import os
+
+def main(dry_run=False, nobackup=False, assume_yes=False, timestamp=None):
     """Main function to run the conversion process using the Ghost API."""
+    if not timestamp:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     print("Starting the Ghost WebP conversion process...")
 
     database_name = config.db_config.get('database', 'ghost')
@@ -14,22 +26,19 @@ def main(dry_run=False, nobackup=False, assume_yes=False):
     # --- Step 1: Analysis Phase ---
     print("\n--- Step 1: Analyzing Images and Creating Conversion Plan ---")
     print("Finding and logging images...")
-    all_images, duplicates = find_images(config.images_path, config.log_path, database_name)
+    all_images, duplicates = find_images(config.images_path, config.log_path, database_name, timestamp)
 
     if not all_images:
         print("No images found to process. Aborting.")
         return
 
     print("Generating conversion map (Dry Run)...")
-    conversion_map = convert_images_to_webp(all_images, duplicates, config.webp_quality, config.log_path, config.images_path, database_name, config.ghost_api_url, dry_run=True)
+    conversion_map = convert_images_to_webp(all_images, duplicates, config.webp_quality, config.log_path, config.images_path, database_name, config.ghost_api_url, timestamp, dry_run=True)
 
     if not conversion_map:
         print("Image conversion analysis failed or produced no results. Aborting.")
         return
 
-    import json
-    import os
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     map_log_path = os.path.join(config.log_path, f"conversion_map_{database_name}_{timestamp}.json")
     print(f"Saving conversion plan to: {map_log_path}")
     with open(map_log_path, 'w', encoding='utf-8') as f:
@@ -73,7 +82,7 @@ def main(dry_run=False, nobackup=False, assume_yes=False):
     if not nobackup:
         print("\n--- Step 2: Backing up database and files ---")
         from backup import run_backup_process
-        if not run_backup_process(dry_run=dry_run, assume_yes=True):
+        if not run_backup_process(dry_run=dry_run, assume_yes=True, timestamp=timestamp):
             if not dry_run:
                 print("\nBackup step failed. Aborting the main process.")
                 return
@@ -85,7 +94,7 @@ def main(dry_run=False, nobackup=False, assume_yes=False):
     # Step 3: Convert images to WebP (Execution Phase)
     if not dry_run:
         print("\n--- Step 3: Converting images to WebP (Execution Phase) ---")
-        conversion_map = convert_images_to_webp(all_images, duplicates, config.webp_quality, config.log_path, config.images_path, database_name, config.ghost_api_url, dry_run=False)
+        conversion_map = convert_images_to_webp(all_images, duplicates, config.webp_quality, config.log_path, config.images_path, database_name, config.ghost_api_url, timestamp, dry_run=False)
         print(f"Successfully converted {len(conversion_map) // 3} images.")
     else:
         print("\n--- Step 3: Converting images to WebP (DRY RUN) ---")
@@ -112,4 +121,5 @@ if __name__ == "__main__":
     if args.nobackup:
         print("--- Running with --nobackup option. All backup processes will be skipped. ---")
 
-    main(dry_run=args.dry, nobackup=args.nobackup, assume_yes=args.yes)
+    execution_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    main(dry_run=args.dry, nobackup=args.nobackup, assume_yes=args.yes, timestamp=execution_timestamp)

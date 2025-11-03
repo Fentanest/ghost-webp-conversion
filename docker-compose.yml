@@ -21,6 +21,9 @@ services:
       JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES}
       WEBP_QUALITY: ${WEBP_QUALITY}
 
+      # Timezone
+      TZ: ${TZ}
+
       # Internal container paths (these should generally not be changed)
       GHOST_PATH: "/var/lib/ghost/content"
       IMAGES_PATH: "/var/lib/ghost/content/images"

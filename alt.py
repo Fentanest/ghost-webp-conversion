@@ -215,7 +215,7 @@ def restore_alt_tags(log_filepath, dry_run=False, assume_yes=False):
     execute_alt_tag_updates(items_to_update)
     print("\n--- Alt tag restoration process finished successfully! ---")
 
-def main():
+def main(timestamp):
     parser = argparse.ArgumentParser(description="Automatically add or restore alt tags to images in Ghost posts and pages.")
     parser.add_argument('--dry', action='store_true', help="Run in dry-run mode. No changes will be made.")
     parser.add_argument('--force', action='store_true', help="Force overwrite of existing alt tags.")
@@ -236,7 +236,6 @@ def main():
 
     # 2. Save the JSON log file
     if changes_log:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_path = config.log_path
         if not os.path.exists(log_path):
             os.makedirs(log_path)
@@ -272,4 +271,5 @@ def main():
     print("\nAlt tag update process finished successfully!")
 
 if __name__ == "__main__":
-    main()
+    execution_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    main(timestamp=execution_timestamp)

@@ -1,11 +1,36 @@
 # db_handler.py
+import config
 import re
 import os
-import datetime
+from datetime import datetime
 import subprocess
 import mysql.connector
 import json
 from bs4 import BeautifulSoup
+
+_ssl_flag_cache = None
+
+def get_mysqldump_ssl_flag():
+    """
+    Detects the mysqldump client type (MariaDB vs Oracle MySQL) and returns the appropriate SSL flag.
+    Caches the result to avoid running the command multiple times.
+    """
+    global _ssl_flag_cache
+    if _ssl_flag_cache is not None:
+        return _ssl_flag_cache
+
+    try:
+        result = subprocess.run(['mysqldump', '--version'], capture_output=True, text=True, check=True)
+        version_string = result.stdout.lower()
+        if 'mariadb' in version_string:
+            _ssl_flag_cache = ['--skip-ssl']
+        else:
+            _ssl_flag_cache = ['--ssl-mode=DISABLED']
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # Default to the most common flag if detection fails
+        _ssl_flag_cache = ['--ssl-mode=DISABLED']
+    
+    return _ssl_flag_cache
 
 def check_db_connection_and_existence(db_config):
     """
@@ -44,8 +69,7 @@ def check_db_connection_and_existence(db_config):
         print(f"Error: Missing required key {e} in db_config in config.py.")
         return False
 
-
-def backup_database(db_config, backup_path, nobackup=False, dry_run=False):
+def backup_database(db_config, backup_path, timestamp, nobackup=False, dry_run=False):
     """
     Dumps the MySQL database to a .sql file.
     """
@@ -54,10 +78,9 @@ def backup_database(db_config, backup_path, nobackup=False, dry_run=False):
         return None
 
     if dry_run:
-        print(f"DRY RUN: Would backup database '{db_config['database']}' to {os.path.join(backup_path, f"db_backup_{db_config['database']}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.sql")}")
+        print(f"DRY RUN: Would backup database '{db_config['database']}' to {os.path.join(backup_path, f"db_backup_{db_config['database']}_{timestamp}.sql")}")
         return None
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_filename = f"db_backup_{db_config['database']}_{timestamp}.sql"
     backup_filepath = os.path.join(backup_path, backup_filename)
 
@@ -74,8 +97,12 @@ def backup_database(db_config, backup_path, nobackup=False, dry_run=False):
             f'--password={db_config["password"]}',
             f'--host={db_config["host"]}',
             f'--port={db_config.get("port", 3306)}',
-            db_config['database']
         ]
+
+        # Automatically add the correct SSL flag
+        command.extend(get_mysqldump_ssl_flag())
+        
+        command.append(db_config['database'])
 
         # Execute the command and write the output to the backup file
         with open(backup_filepath, 'w') as f:
@@ -93,7 +120,7 @@ def backup_database(db_config, backup_path, nobackup=False, dry_run=False):
         print("Error: 'mysqldump' command not found. Please make sure MySQL client tools are installed and in your PATH.")
         return None
 
-def backup_plaintext(db_config, backup_path, dry_run=False):
+def backup_plaintext(db_config, backup_path, timestamp, dry_run=False):
     """
     Backs up the id, slug, and plaintext of posts containing images.
     """
@@ -121,18 +148,10 @@ def backup_plaintext(db_config, backup_path, dry_run=False):
         return None
 
     if dry_run:
-        print(f"DRY RUN: Would backup plaintext for {len(posts_to_backup)} posts to {os.path.join(backup_path, f"plaintext_backup_{db_config['database']}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json")}")
+        print(f"DRY RUN: Would backup plaintext for {len(posts_to_backup)} posts to {os.path.join(backup_path, f"plaintext_backup_{db_config['database']}_{timestamp}.json")}")
         return None # Return None as no file is actually created
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_filename = f"plaintext_backup_{db_config['database']}_{timestamp}.json"
-    backup_filepath = os.path.join(backup_path, backup_filename)
-    
-    with open(backup_filepath, 'w', encoding='utf-8') as f:
-        json.dump(posts_to_backup, f, indent=4, ensure_ascii=False)
-    
-    print(f"Successfully backed up plaintext for {len(posts_to_backup)} posts to {backup_filepath}")
-    return backup_filepath
 
 
 def _process_image_url(url, conversion_map):

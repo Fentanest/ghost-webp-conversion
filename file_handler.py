@@ -1,6 +1,6 @@
 # file_handler.py
 import os
-import datetime
+from datetime import datetime
 import tarfile
 import subprocess
 import multiprocessing
@@ -90,7 +90,7 @@ def _check_pigz_installed():
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
 
-def backup_ghost_files(ghost_path, backup_path, database_name, nobackup=False, dry_run=False):
+def backup_ghost_files(ghost_path, backup_path, database_name, timestamp, nobackup=False, dry_run=False):
     """
     Compresses the Ghost content directory into a tar.gz file, using pigz if available.
     """
@@ -99,10 +99,9 @@ def backup_ghost_files(ghost_path, backup_path, database_name, nobackup=False, d
         return None
 
     if dry_run:
-        print(f"DRY RUN: Would backup Ghost files from {ghost_path} to {os.path.join(backup_path, f'ghost_backup_{database_name}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.tar.gz')}")
+        print(f"DRY RUN: Would backup Ghost files from {ghost_path} to {os.path.join(backup_path, f'ghost_backup_{database_name}_{timestamp}.tar.gz')}")
         return None
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_filename = f"ghost_backup_{database_name}_{timestamp}.tar.gz"
     backup_filepath = os.path.join(backup_path, backup_filename)
 
@@ -149,7 +148,7 @@ def backup_ghost_files(ghost_path, backup_path, database_name, nobackup=False, d
         print("Backup completed with standard tarfile.")
         return backup_filepath
 
-def find_images(images_path, log_path, database_name):
+def find_images(images_path, log_path, database_name, timestamp):
     """
     Finds all non-webp images, logs them, and identifies duplicates.
     Ignores responsive image directories.
@@ -161,7 +160,6 @@ def find_images(images_path, log_path, database_name):
     if not os.path.exists(log_path):
         os.makedirs(log_path)
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     image_list_log_path = os.path.join(log_path, f"image_list_{database_name}_{timestamp}.log")
     duplicate_files_log_path = os.path.join(log_path, f"duplicate_files_{database_name}_{timestamp}.log")
 
@@ -208,7 +206,7 @@ def _convert_worker(args):
     Worker function to convert a single image. To be used by a multiprocessing Pool.
     If the target WebP file already exists, it finds a unique name by appending a number.
     """
-    image_path, duplicates, quality, images_path, dry_run = args
+    image_path, duplicates, quality, images_path, dry_run, timestamp = args
     try:
         # Exclude files without an extension or .ico files
         _, ext = os.path.splitext(image_path)
@@ -265,17 +263,16 @@ def _convert_worker(args):
     except Exception as e:
         return ('error', image_path, str(e), None, None)
 
-def convert_images_to_webp(image_paths, duplicates, quality, log_path, images_path, database_name, ghost_api_url, dry_run=False):
+def convert_images_to_webp(image_paths, duplicates, quality, log_path, images_path, database_name, ghost_api_url, timestamp, dry_run=False):
     """
     Converts images to WebP format in parallel and logs the conversions.
     The conversion_map now maps various URL formats to the new WebP URL path, maintaining key/value type consistency.
     """
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     conversion_log_path = os.path.join(log_path, f"conversion_log_{database_name}_{timestamp}.log")
     conversion_map = {}
     api_url_base = ghost_api_url.rstrip('/')
 
-    tasks = [(path, duplicates, quality, images_path, dry_run) for path in image_paths]
+    tasks = [(path, duplicates, quality, images_path, dry_run, timestamp) for path in image_paths]
 
     if dry_run:
         print("DRY RUN: Image conversion process will be simulated.")

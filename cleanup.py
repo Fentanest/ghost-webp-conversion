@@ -100,14 +100,13 @@ def get_used_images_from_api():
             print(f"Response: {e.response.text}")
         return None
 
-def find_unused_images(images_path, log_path, dry_run=False):
+def find_unused_images(images_path, log_path, timestamp, dry_run=False):
     """Compares images on disk with images used in the API to find orphans."""
     used_api_paths = get_used_images_from_api()
     if used_api_paths is None:
         return None # Error occurred in API scan
 
     # Save the list of used images to a file for debugging
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     used_images_log_path = os.path.join(log_path, f"used_images_from_api_{timestamp}.json")
     print(f"\nSaving list of {len(used_api_paths)} used images to: {used_images_log_path}")
     with open(used_images_log_path, 'w', encoding='utf-8') as f:
@@ -163,7 +162,6 @@ def find_unused_images(images_path, log_path, dry_run=False):
     print(f"Found {len(unused_file_paths)} unused images.")
 
     # Save the list of unused images to a file for debugging
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     unused_images_log_path = os.path.join(log_path, f"unused_images_to_delete_{timestamp}.json")
     print(f"\nSaving list of {len(unused_file_paths)} unused images to: {unused_images_log_path}")
     with open(unused_images_log_path, 'w', encoding='utf-8') as f:
@@ -181,7 +179,7 @@ def _check_pigz_installed():
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
 
-def backup_and_delete_unused_images(unused_files, backup_path, log_path, args):
+def backup_and_delete_unused_images(unused_files, backup_path, log_path, args, timestamp):
     """
     Logs, backs up, and deletes the list of unused files.
     If dry_run is True, only prints the files that would be deleted.
@@ -229,8 +227,6 @@ def backup_and_delete_unused_images(unused_files, backup_path, log_path, args):
             return
     else:
         print("Bypassing prompt due to --yes flag.")
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     if not os.path.exists(log_path):
         os.makedirs(log_path)
@@ -313,7 +309,8 @@ if __name__ == "__main__":
 
     print("Starting the unused image cleanup process...")
     
-    unused_images = find_unused_images(config.images_path, config.log_path, dry_run=args.dry)
+    execution_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unused_images = find_unused_images(config.images_path, config.log_path, execution_timestamp, dry_run=args.dry)
 
     if unused_images is not None:
-        backup_and_delete_unused_images(unused_images, config.backup_path, config.log_path, args)
+        backup_and_delete_unused_images(unused_images, config.backup_path, config.log_path, args, execution_timestamp)

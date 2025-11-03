@@ -4,8 +4,10 @@ This project provides a suite of Python utilities designed to help you efficient
 
 - **`main.py`**: Converts all uploaded images to the modern, efficient WebP format and automatically updates all database references to point to the new files.
 - **`reorganize.py`**: Organizes your media files into structured, slug-based folders, making your content directory easier to navigate and manage.
-- **`cleanup.py`**: Scans your Ghost database to identify and remove unused, orphaned images, freeing up storage space and keeping your instance tidy.
+- **`cleanup.py`**: Scans your Ghost **API** to identify images currently in use, then compares this with images on disk to find and remove unused, orphaned images, freeing up storage space and keeping your instance tidy.
 - **`alt.py`**: Automatically generates and updates `alt` tags for images in your Ghost posts, improving SEO and accessibility.
+
+**Note on Database Interaction:** Most scripts primarily interact with your Ghost instance via its Admin API. This API, in turn, manages the Ghost database. The `backup.py` script is the main utility that directly interacts with the MySQL database using `mysqldump` for full database backups.
 
 These tools are designed to be run in the command line and offer options for dry runs and backups to ensure safe operation.
 
@@ -227,6 +229,12 @@ DB_DATABASE=your_mysql_database
 # ----------------------------------------------------
 JWT_EXPIRATION_MINUTES=5
 WEBP_QUALITY=80
+
+# ----------------------------------------------------
+# Container Timezone
+# ----------------------------------------------------
+# Example: America/New_York, Europe/London, Asia/Seoul
+TZ=Asia/Seoul
 ```
 **Important:** For database settings, `DB_HOST` should point to your MySQL server's IP address accessible from Docker (e.g., `host.docker.internal` if running Docker Desktop, or the server's network IP).
 
@@ -255,7 +263,14 @@ docker exec -it ghost-webp-converter python reorganize.py
 ### Building the Image Manually (Optional)
 If you wish to build the image yourself instead of using the pre-built one, you can use the provided `build.sh` script. This requires you to be logged into Docker Hub.
 
+To build a production image with versioning:
 ```bash
 ./build.sh
 ```
-This will build and push a multi-platform image to `fentanest/ghost-webp-converter:latest` and tag it with a new version number.
+This will build and push a multi-platform image, tag it with `:latest` and a new version number (from the `VERSION` file), and then increment the version in the `VERSION` file.
+
+To build a development image:
+```bash
+./build.sh --dev
+```
+This will build and push an image tagged only with `:dev`, without affecting the project version.

@@ -1,14 +1,22 @@
 # backup.py
-import argparse
 import config
-from db_handler import backup_database, verify_db_connection_or_abort
-from file_handler import backup_ghost_files
+from api_handler import update_image_links_via_api
+from file_handler import find_images, convert_images_to_webp
+import argparse
+from datetime import datetime
 
-def run_backup_process(dry_run=False, assume_yes=False):
+from db_handler import backup_database, backup_plaintext, verify_db_connection_or_abort
+from file_handler import backup_ghost_files
+import os
+
+def run_backup_process(dry_run=False, assume_yes=False, timestamp=None):
     """
     Orchestrates the backup of the Ghost database and content files.
     Returns True on success, False on failure.
     """
+    if not timestamp:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     # Display current configuration and ask for user confirmation
     print("\n--- Current Configuration & Settings ---")
     print(f"Database Host: {config.db_config.get('host', 'N/A')}")
@@ -33,8 +41,8 @@ def run_backup_process(dry_run=False, assume_yes=False):
     database_name = config.db_config['database']
 
     print("\n--- Backing up database and files ---")
-    db_backup_file = backup_database(config.db_config, config.backup_path, dry_run=dry_run)
-    ghost_backup_file = backup_ghost_files(config.ghost_path, config.backup_path, database_name, dry_run=dry_run)
+    db_backup_file = backup_database(config.db_config, config.backup_path, timestamp, dry_run=dry_run)
+    ghost_backup_file = backup_ghost_files(config.ghost_path, config.backup_path, database_name, timestamp, dry_run=dry_run)
 
     # In dry_run, the backup functions return a simulated path or None, but we don't want to fail.
     if (not db_backup_file or not ghost_backup_file) and not dry_run:

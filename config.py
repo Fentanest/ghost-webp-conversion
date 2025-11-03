@@ -18,6 +18,8 @@ db_config = {
     'database': os.getenv('DB_DATABASE', 'your_mysql_database')
 }
 
+
+
 # Path to the Ghost CMS root directory
 # Example: '/var/lib/ghost'
 ghost_path = os.getenv('GHOST_PATH', '/path/to/your/ghost')
