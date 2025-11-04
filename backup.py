@@ -1,7 +1,5 @@
 # backup.py
 import config
-from api_handler import update_image_links_via_api
-from file_handler import find_images, convert_images_to_webp
 import argparse
 from datetime import datetime
 

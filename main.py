@@ -1,18 +1,34 @@
 # main.py
 import config
-from api_handler import update_image_links_via_api
-from file_handler import find_images, convert_images_to_webp
-import argparse
-from datetime import datetime
-
-# main.py
-import config
-from api_handler import update_image_links_via_api
-from file_handler import find_images, convert_images_to_webp
+from api_handler import update_image_links_via_api, get_image_urls_from_published_content
+from file_handler import convert_images_to_webp, resolve_urls_to_local_paths
 import argparse
 from datetime import datetime
 import json
 import os
+
+def find_duplicates_from_list(image_paths, log_path, database_name, timestamp):
+    """Finds and logs duplicate basenames from a given list of image paths."""
+    duplicate_files_log_path = os.path.join(log_path, f"duplicate_files_{database_name}_{timestamp}.log")
+    basenames = {}
+    for image_path in image_paths:
+        basename, _ = os.path.splitext(image_path)
+        if basename not in basenames:
+            basenames[basename] = []
+        basenames[basename].append(image_path)
+
+    duplicates = {base: paths for base, paths in basenames.items() if len(paths) > 1}
+
+    if duplicates:
+        print(f"Found {len(duplicates)} sets of files with duplicate names.")
+        with open(duplicate_files_log_path, 'w') as f:
+            for basename, paths in duplicates.items():
+                f.write(f"Basename: {basename}\n")
+                for path in paths:
+                    f.write(f"  - {path}\n")
+        print(f"List of duplicate-named files saved to: {duplicate_files_log_path}")
+    
+    return duplicates
 
 def main(dry_run=False, nobackup=False, assume_yes=False, timestamp=None):
     """Main function to run the conversion process using the Ghost API."""
@@ -25,12 +41,21 @@ def main(dry_run=False, nobackup=False, assume_yes=False, timestamp=None):
 
     # --- Step 1: Analysis Phase ---
     print("\n--- Step 1: Analyzing Images and Creating Conversion Plan ---")
-    print("Finding and logging images...")
-    all_images, duplicates = find_images(config.images_path, config.log_path, database_name, timestamp)
-
-    if not all_images:
-        print("No images found to process. Aborting.")
+    
+    # 1a. Get all image URLs from published/scheduled content
+    image_urls = get_image_urls_from_published_content()
+    if not image_urls:
+        print("No image URLs found in published content. Aborting.")
         return
+
+    # 1b. Resolve URLs to local file paths
+    all_images = resolve_urls_to_local_paths(image_urls, config.images_path, config.ghost_api_url)
+    if not all_images:
+        print("No local image files were found from the URLs. Aborting.")
+        return
+
+    # 1c. Find duplicates among the resolved images
+    duplicates = find_duplicates_from_list(all_images, config.log_path, database_name, timestamp)
 
     print("Generating conversion map (Dry Run)...")
     conversion_map = convert_images_to_webp(all_images, duplicates, config.webp_quality, config.log_path, config.images_path, database_name, config.ghost_api_url, timestamp, dry_run=True)

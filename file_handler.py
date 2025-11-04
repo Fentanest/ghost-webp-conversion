@@ -148,58 +148,47 @@ def backup_ghost_files(ghost_path, backup_path, database_name, timestamp, noback
         print("Backup completed with standard tarfile.")
         return backup_filepath
 
-def find_images(images_path, log_path, database_name, timestamp):
+def resolve_urls_to_local_paths(image_urls, images_path, ghost_api_url):
     """
-    Finds all non-webp images, logs them, and identifies duplicates.
-    Ignores responsive image directories.
+    Converts a set of absolute or relative image URLs into a list of absolute local filesystem paths.
+    Only includes paths that exist and are actual files.
     """
-    if not os.path.exists(images_path):
-        print(f"Error: Images directory not found at {images_path}")
-        return [], []
+    local_image_paths = set()
+    api_url_base = ghost_api_url.rstrip('/')
 
-    if not os.path.exists(log_path):
-        os.makedirs(log_path)
+    for url in image_urls:
+        try:
+            # Unquote URL to handle special characters in filenames
+            url = unquote(url)
+            
+            # Make relative URLs absolute
+            if url.startswith('/'):
+                url = api_url_base + url
 
-    image_list_log_path = os.path.join(log_path, f"image_list_{database_name}_{timestamp}.log")
-    duplicate_files_log_path = os.path.join(log_path, f"duplicate_files_{database_name}_{timestamp}.log")
+            parsed_url = urlparse(url)
+            path = parsed_url.path
 
-    all_images = []
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff')
-    ignore_dirs = ['size', 'format']
+            # Normalize path to remove potential responsive variants
+            normalized_path = _normalize_path(path)
 
-    for root, dirs, files in os.walk(images_path):
-        dirs[:] = [d for d in dirs if d not in ignore_dirs]
-        
-        for file in files:
-            if file.lower().endswith(image_extensions):
-                all_images.append(os.path.join(root, file))
+            # Check if the path is a content path we should handle
+            if normalized_path.startswith('/content/images/'):
+                relative_path = normalized_path[len('/content/images/'):]
+                local_path = os.path.join(images_path, relative_path)
+                
+                # Ensure the path is clean and absolute
+                abs_local_path = os.path.abspath(local_path)
 
-    print(f"Found {len(all_images)} original images to process.")
+                if os.path.exists(abs_local_path) and os.path.isfile(abs_local_path):
+                    local_image_paths.add(abs_local_path)
 
-    with open(image_list_log_path, 'w') as f:
-        for image_path in all_images:
-            f.write(f"{image_path}\n")
-    print(f"Full list of images saved to: {image_list_log_path}")
+        except Exception as e:
+            print(f"Could not process URL '{url}': {e}")
+            continue
 
-    basenames = {}
-    for image_path in all_images:
-        basename, _ = os.path.splitext(image_path)
-        if basename not in basenames:
-            basenames[basename] = []
-        basenames[basename].append(image_path)
+    print(f"Resolved {len(local_image_paths)} unique local image files to process.")
+    return list(local_image_paths)
 
-    duplicates = {base: paths for base, paths in basenames.items() if len(paths) > 1}
-
-    if duplicates:
-        print(f"Found {len(duplicates)} sets of files with duplicate names.")
-        with open(duplicate_files_log_path, 'w') as f:
-            for basename, paths in duplicates.items():
-                f.write(f"Basename: {basename}\n")
-                for path in paths:
-                    f.write(f"  - {path}\n")
-        print(f"List of duplicate-named files saved to: {duplicate_files_log_path}")
-    
-    return all_images, duplicates
 
 def _convert_worker(args):
     """
@@ -208,10 +197,10 @@ def _convert_worker(args):
     """
     image_path, duplicates, quality, images_path, dry_run, timestamp = args
     try:
-        # Exclude files without an extension or .ico files
+        # Exclude files without an extension, .ico files, or already converted .webp files
         _, ext = os.path.splitext(image_path)
-        if not ext or ext.lower() == '.ico':
-            return ('skipped', image_path, 'File has no extension or is an icon file.')
+        if not ext or ext.lower() in ['.ico', '.webp']:
+            return ('skipped', image_path, 'File is an icon, has no extension, or is already a WebP.')
 
         original_basename, original_ext = os.path.splitext(os.path.basename(image_path))
         output_dir = os.path.dirname(image_path)

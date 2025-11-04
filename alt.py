@@ -27,8 +27,8 @@ def analyze_alt_tags(force=False):
 
     for content_type in ['posts', 'pages']:
         try:
-            content_url = f"{api_url}/ghost/api/admin/{content_type}/?limit=all&formats=html"
-            print(f"Fetching all {content_type} via API...")
+            content_url = f"{api_url}/ghost/api/admin/{content_type}/?limit=all&formats=html&filter=status:[published,scheduled]"
+            print(f"Fetching all published and scheduled {content_type} via API...")
             response = requests.get(content_url, headers=headers)
             response.raise_for_status()
             items = response.json().get(content_type, [])

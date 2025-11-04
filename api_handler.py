@@ -8,6 +8,57 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from file_handler import _process_url
 
+def get_image_urls_from_published_content():
+    """
+    Fetches all published and scheduled posts and pages, and extracts all image URLs
+    (feature_image, src, srcset) from their content.
+    """
+    token = generate_jwt(config.ghost_admin_api_key)
+    if not token:
+        print("Failed to generate API token.")
+        return set()
+
+    headers = {'Authorization': f'Ghost {token}'}
+    api_url = config.ghost_api_url.rstrip('/')
+    image_urls = set()
+
+    with requests.Session() as s:
+        s.headers.update(headers)
+        for content_type in ['posts', 'pages']:
+            try:
+                content_url = f"{api_url}/ghost/api/admin/{content_type}/?limit=all&formats=html&filter=status:[published,scheduled]"
+                print(f"Fetching all published and scheduled {content_type} to find image URLs...")
+                response = s.get(content_url)
+                response.raise_for_status()
+                items = response.json().get(content_type, [])
+
+                for item in items:
+                    # 1. Add feature_image
+                    if item.get('feature_image'):
+                        image_urls.add(item['feature_image'])
+
+                    # 2. Parse HTML for <img> tags
+                    html = item.get('html')
+                    if not html:
+                        continue
+                    
+                    soup = BeautifulSoup(html, 'html.parser')
+                    
+                    # Find all <img> tags and <source> tags within <picture>
+                    for tag in soup.find_all(['img', 'source']):
+                        if tag.has_attr('src'):
+                            image_urls.add(tag['src'])
+                        if tag.has_attr('srcset'):
+                            # Parse srcset: "url1 1x, url2 2x"
+                            srcset_urls = [part.strip().split(' ')[0] for part in tag['srcset'].split(',') if part.strip()]
+                            image_urls.update(srcset_urls)
+
+            except requests.exceptions.RequestException as e:
+                print(f"Error fetching {content_type} for URL extraction: {e}")
+
+    print(f"Found {len(image_urls)} unique image URLs in published/scheduled content.")
+    return image_urls
+
 def generate_jwt(api_key):
     """Generates a JWT for Ghost Admin API authentication."""
     try:
@@ -75,8 +126,8 @@ def update_image_links_via_api(conversion_map, dry_run=False, log_path='.', data
 
         for content_type in ['posts', 'pages']:
             try:
-                content_url = f"{api_url}/ghost/api/admin/{content_type}/?limit=all&formats=html,mobiledoc"
-                print(f"Fetching all {content_type} via Ghost API...")
+                content_url = f"{api_url}/ghost/api/admin/{content_type}/?limit=all&formats=html,mobiledoc&filter=status:[published,scheduled]"
+                print(f"Fetching all published and scheduled {content_type} via Ghost API...")
                 response = s.get(content_url)
                 response.raise_for_status()
                 items = response.json().get(content_type, [])

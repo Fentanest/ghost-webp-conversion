@@ -26,7 +26,7 @@ def get_all_content_via_api():
     all_items = []
 
     for content_type in ['posts', 'pages']:
-        content_url = f"{api_url}/ghost/api/admin/{content_type}/?limit=all&formats=html,mobiledoc&fields=slug,id,html,feature_image,mobiledoc"
+        content_url = f"{api_url}/ghost/api/admin/{content_type}/?limit=all&formats=html,mobiledoc&fields=slug,id,html,feature_image,mobiledoc&filter=status:[published,scheduled]"
         try:
             response = requests.get(content_url, headers=headers)
             response.raise_for_status()
